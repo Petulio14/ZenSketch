@@ -1134,3 +1134,75 @@ body.light-theme .range-input {
 .sketch-canvas.active {
     pointer-events: auto;
 }
+
+.auto-guides-status {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--accent-glow);
+    background: rgba(168, 85, 247, 0.08);
+    border: 1px solid rgba(168, 85, 247, 0.2);
+    border-radius: 8px;
+    padding: 6px 12px;
+    text-align: center;
+    margin-top: 6px;
+    animation: pulseGlow 2s infinite ease-in-out;
+}
+
+@keyframes pulseGlow {
+    0%, 100% { opacity: 0.8; box-shadow: 0 0 4px rgba(168, 85, 247, 0.1); }
+    50% { opacity: 1; box-shadow: 0 0 10px rgba(168, 85, 247, 0.25); }
+}
+
+/* --- MODO BOCETO (SOLO GUÍAS) --- */
+:root {
+    --sketch-paper-bg: #12121a;
+}
+
+body.light-theme {
+    --sketch-paper-bg: #f8fafc;
+}
+
+.image-wrapper {
+    transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+#active-image {
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease !important;
+}
+
+.image-wrapper.hide-image {
+    background-color: var(--sketch-paper-bg) !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+
+.image-wrapper.hide-image #active-image {
+    opacity: 0 !important;
+}
+
+/* --- CANVAS DE CONTORNOS --- */
+.contour-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+    pointer-events: none;
+    display: none;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+    transform-origin: center center;
+}
+
+.image-wrapper.image-to-sketch {
+    background-color: var(--sketch-paper-bg) !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+
+.image-wrapper.image-to-sketch #active-image {
+    opacity: 0 !important;
+}
+
+.image-wrapper.image-to-sketch .contour-canvas {
+    display: block !important;
+}
+

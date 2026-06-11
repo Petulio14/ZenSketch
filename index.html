@@ -195,6 +195,31 @@
                     </label>
                 </div>
 
+
+                <!-- Imagen a Boceto (Sin fondo) -->
+                <div class="option-row">
+                    <label class="option-label">
+                        <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m11.314 11.314l.707.707M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>
+                        <span>Imagen a Boceto (Sin fondo)</span>
+                    </label>
+                    <label class="switch">
+                        <input type="checkbox" id="image-to-sketch-toggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <!-- Modo Boceto / Ocultar imagen -->
+                <div class="option-row">
+                    <label class="option-label">
+                        <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+                        <span>Modo Boceto (Solo guías)</span>
+                    </label>
+                    <label class="switch">
+                        <input type="checkbox" id="hide-image-toggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
                 <!-- Controles del Pincel -->
                 <div class="brush-controls-container hidden" id="brush-controls">
                     <div class="brush-config-row">
@@ -308,6 +333,7 @@
             <div class="image-viewer-container hidden" id="image-viewer">
                 <div class="image-wrapper" id="image-wrapper">
                     <img id="active-image" src="" alt="Referencia de dibujo">
+                    <canvas id="contour-canvas" class="contour-canvas"></canvas>
                     <canvas id="sketch-canvas" class="sketch-canvas"></canvas>
                     
                     <!-- Capas de Cuadrícula -->

@@ -30,6 +30,8 @@ const state = {
         threshold: false,
         grayscale: false
     },
+    hideImage: false,
+    imageToSketch: false,
     
     // Gestión de memoria
     currentObjectURL: null
@@ -93,7 +95,10 @@ const elements = {
     filterBlur: document.getElementById('filter-blur'),
     filterThreshold: document.getElementById('filter-threshold'),
     filterGrayscale: document.getElementById('filter-grayscale'),
-    sketchCanvas: document.getElementById('sketch-canvas')
+    sketchCanvas: document.getElementById('sketch-canvas'),
+    hideImageToggle: document.getElementById('hide-image-toggle'),
+    imageToSketchToggle: document.getElementById('image-to-sketch-toggle'),
+    contourCanvas: document.getElementById('contour-canvas')
 };
 
 // --- AUDIO SINTETIZADO (Campana de Meditación) ---
@@ -393,6 +398,9 @@ function applyImageTransforms() {
     let scaleY = state.mirrorV ? -1 : 1;
     elements.activeImage.style.transform = `scale(${scaleX}, ${scaleY})`;
     elements.sketchCanvas.style.transform = `scale(${scaleX}, ${scaleY})`;
+    if (elements.contourCanvas) {
+        elements.contourCanvas.style.transform = `scale(${scaleX}, ${scaleY})`;
+    }
 }
 
 function updateGridOverlay() {
@@ -560,6 +568,11 @@ function toggleTheme() {
         document.body.classList.remove('light-theme');
         localStorage.setItem('theme', 'dark');
     }
+    
+    // Redibujar contornos si están activos para adaptar colores de tiza/grafito
+    if (state.imageToSketch) {
+        updateImageContours();
+    }
 }
 
 // Vinculación de eventos de tema
@@ -671,6 +684,12 @@ function resizeCanvas() {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.drawImage(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height, 0, 0, width, height);
+    
+    // Si el modo boceto de imagen está activo, estimar y redibujar guías básicas
+    if (state.imageToSketch) {
+        analyzeGeneralObject();
+        updateImageContours();
+    }
 }
 
 function applyVisualFilters() {
@@ -776,3 +795,339 @@ elements.activeImage.addEventListener('load', () => {
 });
 
 window.addEventListener('resize', resizeCanvas);
+
+
+function analyzeGeneralObject() {
+    const img = elements.activeImage;
+    const canvas = elements.sketchCanvas;
+    if (!canvas || !img) return;
+    const ctx = canvas.getContext('2d');
+    
+    // Crear un canvas temporal de análisis
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d');
+    
+    // Dimensiones de análisis pequeñas para garantizar velocidad instántanea
+    const size = 150;
+    tempCanvas.width = size;
+    tempCanvas.height = size;
+    
+    try {
+        tempCtx.drawImage(img, 0, 0, size, size);
+    } catch (e) {
+        console.warn('No se pudo leer la imagen del canvas (CORS o carga incompleta).');
+        return;
+    }
+    
+    let imgData;
+    try {
+        imgData = tempCtx.getImageData(0, 0, size, size);
+    } catch (e) {
+        console.warn('Seguridad de origen bloqueó getImageData (CORS).');
+        return;
+    }
+    
+    const data = imgData.data;
+    const edges = new Float32Array(size * size);
+    let minX = size, maxX = 0, minY = size, maxY = 0;
+    let sumX = 0, sumY = 0, edgeCount = 0;
+    
+    // Operador Sobel para detección de contornos
+    for (let y = 1; y < size - 1; y++) {
+        for (let x = 1; x < size - 1; x++) {
+            // Sobel X
+            const gx = 
+                -1 * data[((y-1)*size + (x-1))*4] + 1 * data[((y-1)*size + (x+1))*4] +
+                -2 * data[(y*size + (x-1))*4]     + 2 * data[(y*size + (x+1))*4] +
+                -1 * data[((y+1)*size + (x-1))*4] + 1 * data[((y+1)*size + (x+1))*4];
+                
+            // Sobel Y
+            const gy = 
+                -1 * data[((y-1)*size + (x-1))*4] - 2 * data[((y-1)*size + x)*4] - 1 * data[((y-1)*size + (x+1))*4] +
+                1 * data[((y+1)*size + (x-1))*4] + 2 * data[((y+1)*size + x)*4] + 1 * data[((y+1)*size + (x+1))*4];
+                
+            const val = Math.hypot(gx, gy);
+            
+            if (val > 140) { // Umbral de borde
+                edges[y * size + x] = val;
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+                
+                sumX += x;
+                sumY += y;
+                edgeCount++;
+            }
+        }
+    }
+    
+    clearCanvas();
+    
+    if (edgeCount === 0) return;
+    
+    // Escalar coordenadas de regreso al tamaño renderizado visible
+    const scaleX = canvas.width / size;
+    const scaleY = canvas.height / size;
+    
+    const boxW = (maxX - minX) * scaleX;
+    const boxH = (maxY - minY) * scaleY;
+    const centerX = (sumX / edgeCount) * scaleX;
+    const centerY = (sumY / edgeCount) * scaleY;
+    
+    // Estilo de Boceto Manual (Rosa translúcido y Púrpura)
+    ctx.strokeStyle = '#a21caf'; // Púrpura de boceto
+    ctx.fillStyle = 'rgba(236, 72, 153, 0.15)'; // Rosa translúcido
+    
+    // 1. DIBUJAR LA FORMA GEOMÉTRICA BÁSICA (Deconstrucción simple de esfera/óvalo, ej. manzana)
+    ctx.beginPath();
+    ctx.ellipse(centerX, centerY, boxW * 0.46, boxH * 0.46, 0, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.lineWidth = 1.3;
+    ctx.stroke();
+    
+    // Si el modo boceto de imagen está activo, ya tenemos los contornos de alta resolución sin salirse.
+    // Solo dibujamos la elipse como forma básica de encaje y evitamos trazar las líneas rectas aproximadas.
+    if (state.imageToSketch) {
+        return;
+    }
+    
+    // 2. DIBUJAR CONTORNOS CON EFECTO DE LÍNEA SKETCHY / HECHA A MANO (Boceto fiel)
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#86198f'; // Púrpura más marcado para contornos
+    
+    // Muestrear puntos de borde para simplificar y trazar segmentos
+    const points = [];
+    const step = 4; // Muestrear cada 4 píxeles para simplificar la forma
+    for (let y = minY; y <= maxY; y += step) {
+        for (let x = minX; x <= maxX; x += step) {
+            if (edges[y * size + x] > 0) {
+                points.push({ x: x * scaleX, y: y * scaleY });
+            }
+        }
+    }
+    
+    const maxConnectDist = Math.max(canvas.width, canvas.height) * 0.04; // Distancia máxima para conectar trazos
+    const visited = new Set();
+    
+    for (let i = 0; i < points.length; i++) {
+        if (visited.has(i)) continue;
+        
+        ctx.beginPath();
+        let curr = points[i];
+        
+        // Jitter (pequeña perturbación aleatoria) para crear el efecto de "trazado a mano"
+        const jitter = () => (Math.random() - 0.5) * 1.8;
+        
+        ctx.moveTo(curr.x + jitter(), curr.y + jitter());
+        visited.add(i);
+        
+        let foundNext = true;
+        while (foundNext) {
+            foundNext = false;
+            let minDist = maxConnectDist;
+            let nextIdx = -1;
+            
+            for (let j = 0; j < points.length; j++) {
+                if (visited.has(j)) continue;
+                const dist = Math.hypot(points[j].x - curr.x, points[j].y - curr.y);
+                if (dist < minDist) {
+                    minDist = dist;
+                    nextIdx = j;
+                }
+            }
+            
+            if (nextIdx !== -1) {
+                curr = points[nextIdx];
+                ctx.lineTo(curr.x + jitter(), curr.y + jitter());
+                visited.add(nextIdx);
+                foundNext = true;
+            }
+        }
+        ctx.stroke();
+    }
+}
+
+function updateImageContours() {
+    const img = elements.activeImage;
+    const canvas = elements.contourCanvas;
+    if (!canvas || !img) return;
+    
+    const ctx = canvas.getContext('2d');
+    
+    // Si la imagen no está cargada o no hay modo boceto activo, limpiar y retornar
+    if (!state.imageToSketch || !img.complete || img.naturalWidth === 0) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        return;
+    }
+    
+    const width = img.clientWidth;
+    const height = img.clientHeight;
+    
+    if (width === 0 || height === 0) return;
+    
+    // Redimensionar canvas de contornos para alinearse 1:1
+    canvas.width = width;
+    canvas.height = height;
+    
+    // Crear un canvas temporal para procesamiento a resolución balanceada (max 800px para fluidez instantánea)
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d');
+    
+    const maxDimension = 800;
+    let procWidth = img.naturalWidth;
+    let procHeight = img.naturalHeight;
+    
+    if (procWidth > maxDimension || procHeight > maxDimension) {
+        if (procWidth > procHeight) {
+            procHeight = Math.round((procHeight * maxDimension) / procWidth);
+            procWidth = maxDimension;
+        } else {
+            procWidth = Math.round((procWidth * maxDimension) / procHeight);
+            procHeight = maxDimension;
+        }
+    }
+    
+    tempCanvas.width = procWidth;
+    tempCanvas.height = procHeight;
+    
+    try {
+        tempCtx.drawImage(img, 0, 0, procWidth, procHeight);
+    } catch (e) {
+        console.warn('Error al leer imagen de contornos (CORS/Carga):', e);
+        return;
+    }
+    
+    let imgData;
+    try {
+        imgData = tempCtx.getImageData(0, 0, procWidth, procHeight);
+    } catch (e) {
+        console.warn('Seguridad CORS bloqueó acceso a pixeles para contornos:', e);
+        return;
+    }
+    
+    const data = imgData.data;
+    
+    // 1. Convertir a escala de grises (luminancia)
+    const gray = new Uint8Array(procWidth * procHeight);
+    for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i+1];
+        const b = data[i+2];
+        gray[i/4] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+    }
+    
+    // 2. Operador Sobel para gradientes horizontales y verticales
+    const edges = new Float32Array(procWidth * procHeight);
+    let maxVal = 0;
+    
+    for (let y = 1; y < procHeight - 1; y++) {
+        for (let x = 1; x < procWidth - 1; x++) {
+            const idx = y * procWidth + x;
+            
+            // Kernel Sobel Horizontal
+            const gx = 
+                -1 * gray[(y-1)*procWidth + (x-1)] + 1 * gray[(y-1)*procWidth + (x+1)] +
+                -2 * gray[y*procWidth + (x-1)]     + 2 * gray[y*procWidth + (x+1)] +
+                -1 * gray[(y+1)*procWidth + (x-1)] + 1 * gray[(y+1)*procWidth + (x+1)];
+                
+            // Kernel Sobel Vertical
+            const gy = 
+                -1 * gray[(y-1)*procWidth + (x-1)] - 2 * gray[(y-1)*procWidth + x] - 1 * gray[(y-1)*procWidth + (x+1)] +
+                1 * gray[(y+1)*procWidth + (x-1)] + 2 * gray[(y+1)*procWidth + x] + 1 * gray[(y+1)*procWidth + (x+1)];
+                
+            const val = Math.hypot(gx, gy);
+            edges[idx] = val;
+            if (val > maxVal) maxVal = val;
+        }
+    }
+    
+    // 3. Renderizar boceto artístico de dos capas (Boceto de construcción + Grafito detallado)
+    const isLight = document.body.classList.contains('light-theme');
+    
+    // Colores para la tinta de grafito principal
+    const graphiteColor = isLight ? { r: 51, g: 65, b: 85 } : { r: 226, g: 232, b: 240 };
+    // Colores para la tinta del boceto de construcción base (azul para tema claro, rosa para tema oscuro)
+    const baseColor = isLight ? { r: 56, g: 189, b: 248 } : { r: 244, g: 114, b: 182 };
+    
+    // Umbral de borde
+    const threshold = 35;
+    
+    // Buffer para la capa de boceto base (azul/rosa suave, ligeramente desenfocado o expandido)
+    const baseOutCanvas = document.createElement('canvas');
+    baseOutCanvas.width = procWidth;
+    baseOutCanvas.height = procHeight;
+    const baseCtx = baseOutCanvas.getContext('2d');
+    const baseImgData = baseCtx.createImageData(procWidth, procHeight);
+    const baseData = baseImgData.data;
+    
+    // Buffer para la capa de grafito detallada
+    const graphOutCanvas = document.createElement('canvas');
+    graphOutCanvas.width = procWidth;
+    graphOutCanvas.height = procHeight;
+    const graphCtx = graphOutCanvas.getContext('2d');
+    const graphImgData = graphCtx.createImageData(procWidth, procHeight);
+    const graphData = graphImgData.data;
+    
+    for (let i = 0; i < edges.length; i++) {
+        const idx = i * 4;
+        const val = edges[i];
+        
+        if (val > threshold) {
+            // Intensidad proporcional al gradiente
+            const pct = val / (maxVal || 1);
+            
+            // Capa Base: Trazos de construcción suaves
+            baseData[idx] = baseColor.r;
+            baseData[idx+1] = baseColor.g;
+            baseData[idx+2] = baseColor.b;
+            baseData[idx+3] = Math.min(255, Math.round(pct * 140));
+            
+            // Capa Grafito: Contorno final limpio y oscuro
+            graphData[idx] = graphiteColor.r;
+            graphData[idx+1] = graphiteColor.g;
+            graphData[idx+2] = graphiteColor.b;
+            graphData[idx+3] = Math.min(255, Math.round(pct * 230));
+        } else {
+            baseData[idx+3] = 0;
+            graphData[idx+3] = 0;
+        }
+    }
+    
+    baseCtx.putImageData(baseImgData, 0, 0);
+    graphCtx.putImageData(graphImgData, 0, 0);
+    
+    ctx.clearRect(0, 0, width, height);
+    
+    // Dibujar capa 1 (Boceto de construcción) con un ligero escalado/desenfoque para simular volumen
+    ctx.globalAlpha = 0.55;
+    ctx.drawImage(baseOutCanvas, 0, 0, procWidth, procHeight, -1, -1, width + 2, height + 2);
+    
+    // Dibujar capa 2 (Grafito detallado) exactamente en su posición
+    ctx.globalAlpha = 1.0;
+    ctx.drawImage(graphOutCanvas, 0, 0, procWidth, procHeight, 0, 0, width, height);
+}
+
+// Vinculación de toggle Modo Boceto (Ocultar imagen)
+elements.hideImageToggle.addEventListener('change', (e) => {
+    state.hideImage = e.target.checked;
+    elements.imageWrapper.classList.toggle('hide-image', state.hideImage);
+});
+
+// Vinculación de toggle Imagen a Boceto (Sin fondo)
+elements.imageToSketchToggle.addEventListener('change', (e) => {
+    state.imageToSketch = e.target.checked;
+    elements.imageWrapper.classList.toggle('image-to-sketch', state.imageToSketch);
+    
+    if (state.imageToSketch) {
+        updateImageContours();
+        analyzeGeneralObject();
+    } else {
+        const canvas = elements.contourCanvas;
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+        clearCanvas();
+    }
+});
