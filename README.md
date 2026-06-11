@@ -1,86 +1,165 @@
-# 🎨 ZenSketch — Práctica de Dibujo Inteligente y Minimalista
+# 🎨 ZenSketch — Práctica de Dibujo Inteligente
 
-¡Bienvenido a **ZenSketch**! Una herramienta premium y ultra-fluida diseñada para artistas, ilustradores y estudiantes que desean mejorar sus habilidades de dibujo analítico, bocetado rápido y deconstrucción de formas en un entorno libre de distracciones.
+**ZenSketch** es una herramienta premium diseñada para artistas, ilustradores y estudiantes que desean mejorar sus habilidades de dibujo analítico, bocetado rápido y deconstrucción de formas en un entorno libre de distracciones.
 
-ZenSketch te permite cargar carpetas completas de referencias y practicar de forma infinita con un temporizador inteligente, filtros de abstracción visual de última generación y cuadrículas adaptativas.
+Carga carpetas completas de referencias y practica de forma infinita con un temporizador inteligente, filtros de abstracción visual, cuadrículas adaptativas y herramientas avanzadas de descomposición de imagen.
+
+> **100% local y privado** — Todo se procesa en tu equipo. Sin servidores, sin cuentas, sin rastreo.
 
 ---
 
 ## ✨ Características Principales
 
-*   **⚡ Carga Local Inteligente**: Arrastra o selecciona carpetas enteras de referencias. Todo se procesa localmente en tu navegador para una privacidad total y velocidad instantánea.
-*   **🔄 Playlist Infinita sin Repetición**: Algoritmo de mezcla *Fisher-Yates* que baraja tus imágenes de manera aleatoria y, al terminar el ciclo, vuelve a mezclar asegurando que no se repitan de inmediato.
-*   **⏳ Temporizador con Campana Zen**: Duraciones configurables con accesos rápidos (30s, 1m, 2m, 5m, 10m) y personalizado. Al agotarse el tiempo, suena una campana de meditación rica en armónicos generada mediante síntesis con la **Web Audio API** y pasa automáticamente a la siguiente referencia.
-*   **🖼️ Ajuste de Pantalla Perfecto**: Las imágenes se adaptan de forma óptima a tu viewport conservando su relación de aspecto original (cero deformaciones).
-*   **🪞 Volteo Espejo Instantáneo**: Rota la imagen horizontal o verticalmente para detectar errores de proporción y entrenar el cerebro con nuevas perspectivas.
-*   **📐 Cuadrículas Inteligentes Adaptativas**: Regla de tercios, 2x2 y 4x4 que se reposicionan y redimensionan automáticamente para **ajustarse exactamente al contorno de la imagen**, sin importar la proporción de la pantalla.
-*   **🌓 Estética Premium Premium**: Interfaz moderna con temas Oscuro (Zen) y Claro (Papel), micro-animaciones fluidas y controles deslizantes personalizados.
+### 📂 Carga y Gestión de Imágenes
+- **Carga de carpetas completas** o archivos individuales
+- **Drag & Drop** — Arrastra imágenes directamente al viewport
+- **Formatos soportados**: JPG, PNG, WebP, GIF, TIFF, BMP, HEIC, HEIF, AVIF, SVG
+- **Conversión HEIC/HEIF** automática a JPEG para visualización
+
+### 🔄 Playlist Inteligente
+- Algoritmo de mezcla **Fisher-Yates** para aleatoriedad perfecta
+- Al terminar el ciclo, vuelve a barajar sin repetir la última imagen
+- Navegación libre hacia adelante y atrás
+- Botón de re-mezcla para reiniciar el orden
+
+### ⏳ Temporizador con Campana Zen
+- Presets rápidos: **30s, 1m, 2m, 5m, 10m**
+- Temporizador personalizado (minutos + segundos)
+- Anillo de progreso circular animado con cambio de color
+- Animación de advertencia en los últimos 5 segundos
+- **Campana de meditación** sintetizada con la Web Audio API (armónicos realistas)
+- Avance automático a la siguiente imagen al terminar
+
+### 📐 Cuadrículas Adaptativas
+- **Regla de tercios** — Composición clásica
+- **Cuadrícula 2×2** — División básica
+- **Cuadrícula 4×4** — Análisis detallado
+- Se reposicionan automáticamente para ajustarse al contorno real de la imagen
+
+### 🪞 Volteo Espejo
+- **Horizontal (H)** y **Vertical (V)** instantáneo
+- Detecta errores de proporción y entrena nuevas perspectivas
+
+### 🌓 Temas
+- **Modo Oscuro (Zen)** — Diseñado para sesiones largas sin fatiga visual
+- **Modo Claro (Papel)** — Simula el entorno de un cuaderno de dibujo
+- Persistencia automática con `localStorage`
 
 ---
 
-## 🔬 Deconstrucción Visual y Filtros Avanzados
+## 🔬 Deconstrucción Visual
 
-Para ayudarte a entender mejor la estructura, la luz y los volúmenes de tus referencias, ZenSketch incluye un panel de abstracción en tiempo real:
+Panel completo de abstracción en tiempo real para entender estructura, luz y volúmenes:
 
-1.  **✏️ Imagen a Boceto (Sin Fondo)**:
-    Un motor de procesamiento en el cliente que simula el método de dibujo tradicional a dos capas:
-    *   *Capa de construcción (Boceto base)*: Líneas suaves en tiza azul o rosa para definir las masas.
-    *   *Capa de grafito*: Líneas oscuras y definidas de contorno preciso basadas en un operador Sobel.
-    *   ¡Oculta la foto real y quédate solo con la estructura de dibujo!
-2.  **💧 Desenfoque (Blur) Regulable**:
-    Deslizador interactivo de 1px a 30px que difumina los detalles para que puedas concentrarte en las masas grandes de color, luz y sombra.
-3.  **🌗 Masa de Valores (Threshold)**:
-    Convierte la imagen en bloques gráficos puros de blanco y negro, ideal para analizar la composición de luz y sombra.
-4.  **🩶 Escala de Grises**:
-    Elimina la saturación para enfocar tu estudio en las relaciones de valores tonales.
+### Filtros Básicos
+
+| Filtro | Descripción |
+|---|---|
+| ✏️ **Imagen a Boceto** | Motor Sobel de dos capas: tiza de construcción (azul/rosa) + grafito de contorno. Oculta la foto y muestra solo la estructura |
+| 💧 **Desenfoque (Blur)** | Deslizador de 1px a 30px para concentrarte en masas grandes de color y luz |
+| 🌗 **Masa de Valores** | Convierte la imagen en blanco y negro puro para analizar composición de luz/sombra |
+| 🩶 **Escala de Grises** | Elimina saturación para estudiar relaciones de valores tonales |
+
+### Descomposición Avanzada
+
+| Herramienta | Descripción |
+|---|---|
+| 🎨 **Posterización Inteligente** | Reduce la imagen a 2-8 niveles de color. Ideal para simplificar valores y ver masas de forma |
+| 👁️ **Revelado Progresivo** | 4 niveles: Silueta → Masas de valor → Detalle medio → Imagen completa. Entrena la observación progresiva |
+| 〰️ **Líneas de Flujo** | Dibuja líneas que siguen la dirección tangente a los bordes de la imagen. Visualiza el movimiento y la energía de la composición |
 
 ---
 
-## ⌨️ Atajos de Teclado Rápidos
-
-Agiliza tu flujo de práctica con las teclas rápidas incorporadas:
+## ⌨️ Atajos de Teclado
 
 | Tecla | Acción |
-| :--- | :--- |
-| `Espacio` | Pausa / Reanuda el temporizador |
-| `Flecha Derecha` | Siguiente imagen (reinicia el temporizador) |
-| `Flecha Izquierda` | Imagen anterior (reinicia el temporizador) |
-| `H` | Volteo Espejo Horizontal |
-| `V` | Volteo Espejo Vertical |
-
----
-
-## 🛠️ Tecnologías y Estructura
-
-ZenSketch está construido como una aplicación web nativa (Vanilla) de alto rendimiento, libre de frameworks pesados y dependencias externas innecesarias:
-
-*   **HTML5 & CSS3 Avanzado**: Estilos personalizados con variables CSS, animaciones suaves y maquetación responsive.
-*   **Javascript Vanilla (ES6+)**: Lógica limpia, control de estado ligero y manipulación directa del DOM.
-*   **HTML5 Canvas**: Procesamiento de píxeles interactivo para la detección de bordes artísticos.
-*   **Web Audio API**: Generación de ondas sinusoidales y triangulares para simular de forma realista el decaimiento armónico de una campana metálica.
+|:---|:---|
+| `Espacio` | Pausa / Reanudar temporizador |
+| `→` Flecha Derecha | Siguiente imagen |
+| `←` Flecha Izquierda | Imagen anterior |
+| `H` | Volteo espejo horizontal |
+| `V` | Volteo espejo vertical |
+| `F` | Pantalla completa |
+| `Esc` | Cerrar sidebar (en móvil) |
+| `1` `2` `3` `4` | Niveles de revelado progresivo (cuando está activo) |
 
 ---
 
 ## 🚀 Cómo Usarlo
 
-Al no requerir compilación ni dependencias, puedes iniciarlo inmediatamente de dos maneras:
+### Opción 1: Doble clic (la más rápida)
+Ejecuta el archivo `start.bat` y la app se abrirá directamente en tu navegador.
 
-### Opción 1: Abrir Directamente (Sin Servidor)
-Simplemente haz doble clic en el archivo `index.html` para abrirlo en tu navegador favorito. ¡Funciona al 100% incluso sin conexión a Internet!
+### Opción 2: Abrir el HTML directamente
+Haz doble clic en `index.html` para abrirlo en tu navegador favorito.
 
-### Opción 2: Usar un Servidor Local
-Para una experiencia de desarrollo óptima, puedes levantar un servidor HTTP ligero en el directorio del proyecto:
+### Opción 3: Servidor local
+Para una experiencia de desarrollo óptima:
 
-*   **Con Node.js** (usando `npx`):
-    ```bash
-    npx http-server -p 8000
-    ```
-*   **Con Python**:
-    ```bash
-    python -m http.server 8000
-    ```
+```bash
+# Con Node.js
+npx -y serve -l 3000 -s --open
 
-Luego abre [http://localhost:8000](http://localhost:8000) en tu navegador.
+# Con Python
+python -m http.server 8000
+```
+
+O ejecuta `serve.bat` para hacerlo automáticamente.
+
+### Opción 4: Aplicación de Escritorio (.exe)
+La carpeta `ZenSketch-desktop/dist/ZenSketch-Windows/` contiene un ejecutable portable:
+
+```
+ZenSketch-Windows/
+├── ZenSketch.exe      (~1.7 MB)
+└── resources.neu      (~145 KB)
+```
+
+Doble clic en `ZenSketch.exe` y la app se abre como programa de escritorio nativo.
+Requiere **WebView2** (viene preinstalado en Windows 10/11).
+
+---
+
+## 📁 Estructura del Proyecto
+
+```
+ZenSketch/
+├── index.html              # Estructura principal de la UI
+├── styles.css              # Estilos, temas y animaciones
+├── app.js                  # Lógica completa de la aplicación
+├── start.bat               # Lanzador rápido (abre en navegador)
+├── serve.bat               # Lanzador con servidor local
+├── README.md               # Este archivo
+└── ZenSketch-desktop/      # Versión de escritorio (Neutralinojs)
+    ├── neutralino.config.json
+    ├── www/                # Archivos web empaquetados
+    ├── bin/                # Binarios del framework
+    └── dist/               # Ejecutables compilados
+        └── ZenSketch-Windows/
+            ├── ZenSketch.exe
+            └── resources.neu
+```
+
+---
+
+## 🛠️ Tecnologías
+
+| Tecnología | Uso |
+|---|---|
+| **HTML5 & CSS3** | Estructura, estilos personalizados con variables CSS, animaciones fluidas, diseño responsive |
+| **JavaScript Vanilla (ES6+)** | Lógica de aplicación, control de estado, manipulación del DOM |
+| **HTML5 Canvas** | Procesamiento de píxeles: detección de bordes (Sobel), posterización, líneas de flujo |
+| **Web Audio API** | Síntesis de sonido: osciladores sinusoidales y triangulares para campana de meditación |
+| **Neutralinojs** | Empaquetado como aplicación de escritorio ligera (~1.7 MB) |
+| **Google Fonts (Outfit)** | Tipografía moderna y legible |
+
+---
+
+## 📋 Requisitos
+
+- **Navegador moderno**: Chrome, Edge, Firefox o Safari (versiones recientes)
+- **Para el .exe**: Windows 10/11 con WebView2 (preinstalado por defecto)
+- **Sin dependencias**: No requiere Node.js, npm ni instalación para la versión web
 
 ---
 
