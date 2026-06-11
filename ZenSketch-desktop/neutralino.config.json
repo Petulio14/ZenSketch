@@ -1,0 +1,35 @@
+{
+  "applicationId": "com.zensketch.app",
+  "version": "1.0.0",
+  "defaultMode": "window",
+  "documentRoot": "/www/",
+  "url": "/",
+  "enableServer": true,
+  "enableNativeAPI": true,
+  "tokenSecurity": "one-time",
+  "nativeAllowList": [
+    "app.*",
+    "window.*"
+  ],
+  "modes": {
+    "window": {
+      "title": "ZenSketch - Práctica de Dibujo Inteligente",
+      "width": 1280,
+      "height": 800,
+      "minWidth": 900,
+      "minHeight": 600,
+      "icon": "/www/icon.png",
+      "center": true,
+      "maximize": false,
+      "resizable": true
+    }
+  },
+  "cli": {
+    "binaryName": "ZenSketch",
+    "resourcesPath": "/www/",
+    "extensionsPath": "/extensions/",
+    "clientLibrary": "/www/neutralino.js",
+    "binaryVersion": "6.8.0",
+    "clientVersion": "6.8.0"
+  }
+}
