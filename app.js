@@ -20,17 +20,12 @@ const state = {
     theme: 'dark',       // 'dark' o 'light'
 
     // Deconstrucción y boceto
-    sketchMode: false,
-    brushColor: '#38bdf8',
-    brushSize: 4,
-    sketchOpacity: 0.8,
-    isEraser: false,
     activeFilters: {
         blur: false,
         threshold: false,
         grayscale: false
     },
-    hideImage: false,
+    blurLevel: 12,
     imageToSketch: false,
     
     // Gestión de memoria
@@ -84,19 +79,12 @@ const elements = {
     themeToggle: document.getElementById('theme-toggle'),
 
     // Deconstrucción y boceto
-    sketchToggle: document.getElementById('sketch-toggle'),
-    brushControls: document.getElementById('brush-controls'),
-    brushSize: document.getElementById('brush-size'),
-    brushSizeVal: document.getElementById('brush-size-val'),
-    sketchOpacity: document.getElementById('sketch-opacity'),
-    sketchOpacityVal: document.getElementById('sketch-opacity-val'),
-    eraserBtn: document.getElementById('eraser-btn'),
-    clearSketchBtn: document.getElementById('clear-sketch-btn'),
     filterBlur: document.getElementById('filter-blur'),
+    blurLevelControl: document.getElementById('blur-level-control'),
+    blurLevel: document.getElementById('blur-level'),
+    blurLevelVal: document.getElementById('blur-level-val'),
     filterThreshold: document.getElementById('filter-threshold'),
     filterGrayscale: document.getElementById('filter-grayscale'),
-    sketchCanvas: document.getElementById('sketch-canvas'),
-    hideImageToggle: document.getElementById('hide-image-toggle'),
     imageToSketchToggle: document.getElementById('image-to-sketch-toggle'),
     contourCanvas: document.getElementById('contour-canvas')
 };
@@ -397,9 +385,11 @@ function applyImageTransforms() {
     let scaleX = state.mirrorH ? -1 : 1;
     let scaleY = state.mirrorV ? -1 : 1;
     elements.activeImage.style.transform = `scale(${scaleX}, ${scaleY})`;
-    elements.sketchCanvas.style.transform = `scale(${scaleX}, ${scaleY})`;
     if (elements.contourCanvas) {
         elements.contourCanvas.style.transform = `scale(${scaleX}, ${scaleY})`;
+    }
+    if (elements.gridOverlay) {
+        elements.gridOverlay.style.transform = `scale(${scaleX}, ${scaleY})`;
     }
 }
 
@@ -413,6 +403,29 @@ function updateGridOverlay() {
     }
     
     elements.gridOverlay.classList.remove('hidden');
+    
+    // Ajustar tamaño y posición según la imagen activa renderizada (object-fit: contain)
+    const img = elements.activeImage;
+    if (img && img.complete && img.naturalWidth > 0) {
+        const containerWidth = img.clientWidth;
+        const containerHeight = img.clientHeight;
+        const naturalWidth = img.naturalWidth;
+        const naturalHeight = img.naturalHeight;
+        
+        if (containerWidth > 0 && containerHeight > 0) {
+            const scale = Math.min(containerWidth / naturalWidth, containerHeight / naturalHeight);
+            const renderedWidth = Math.round(naturalWidth * scale);
+            const renderedHeight = Math.round(naturalHeight * scale);
+            
+            const offsetX = Math.round((containerWidth - renderedWidth) / 2);
+            const offsetY = Math.round((containerHeight - renderedHeight) / 2);
+            
+            elements.gridOverlay.style.left = offsetX + 'px';
+            elements.gridOverlay.style.top = offsetY + 'px';
+            elements.gridOverlay.style.width = renderedWidth + 'px';
+            elements.gridOverlay.style.height = renderedHeight + 'px';
+        }
+    }
     
     let gridClass = '';
     let cellCount = 0;
@@ -586,117 +599,13 @@ updateTimerUI();
 // Inicializar tema
 initTheme();
 
-// --- LÓGICA DE DIBUJO Y FILTROS DE DECONSTRUCCIÓN ---
-
-let isDrawing = false;
-let lastX = 0;
-let lastY = 0;
-
-function startDrawing(e) {
-    if (!state.sketchMode) return;
-    isDrawing = true;
-    const coords = getEventCoords(e);
-    lastX = coords.x;
-    lastY = coords.y;
-}
-
-function draw(e) {
-    if (!isDrawing || !state.sketchMode) return;
-    
-    const canvas = elements.sketchCanvas;
-    const ctx = canvas.getContext('2d');
-    const coords = getEventCoords(e);
-    
-    ctx.beginPath();
-    ctx.moveTo(lastX, lastY);
-    ctx.lineTo(coords.x, coords.y);
-    
-    if (state.isEraser) {
-        ctx.globalCompositeOperation = 'destination-out';
-        ctx.lineWidth = state.brushSize * 2.5;
-    } else {
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.strokeStyle = state.brushColor;
-        ctx.lineWidth = state.brushSize;
-    }
-    
-    ctx.stroke();
-    
-    lastX = coords.x;
-    lastY = coords.y;
-}
-
-function stopDrawing() {
-    isDrawing = false;
-}
-
-function getEventCoords(e) {
-    const canvas = elements.sketchCanvas;
-    const rect = canvas.getBoundingClientRect();
-    
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    
-    let x = (clientX - rect.left) * (canvas.width / rect.width);
-    let y = (clientY - rect.top) * (canvas.height / rect.height);
-    
-    // Ajustar coordenadas si la imagen está espejada
-    if (state.mirrorH) {
-        x = canvas.width - x;
-    }
-    if (state.mirrorV) {
-        y = canvas.height - y;
-    }
-    
-    return { x, y };
-}
-
-function clearCanvas() {
-    const canvas = elements.sketchCanvas;
-    if (canvas) {
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-    }
-}
-
-function resizeCanvas() {
-    const canvas = elements.sketchCanvas;
-    const img = elements.activeImage;
-    
-    if (!canvas || !img) return;
-    
-    const width = img.clientWidth;
-    const height = img.clientHeight;
-    
-    if (width === 0 || height === 0) return;
-    
-    // Guardar contenido temporal
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = canvas.width;
-    tempCanvas.height = canvas.height;
-    const tempCtx = tempCanvas.getContext('2d');
-    tempCtx.drawImage(canvas, 0, 0);
-    
-    canvas.width = width;
-    canvas.height = height;
-    
-    const ctx = canvas.getContext('2d');
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.drawImage(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height, 0, 0, width, height);
-    
-    // Si el modo boceto de imagen está activo, estimar y redibujar guías básicas
-    if (state.imageToSketch) {
-        analyzeGeneralObject();
-        updateImageContours();
-    }
-}
+// --- FILTROS DE DECONSTRUCCIÓN ---
 
 function applyVisualFilters() {
     let filterString = '';
     
     if (state.activeFilters.blur) {
-        filterString += 'blur(12px) ';
+        filterString += `blur(${state.blurLevel}px) `;
     }
     
     if (state.activeFilters.threshold) {
@@ -710,54 +619,16 @@ function applyVisualFilters() {
 
 // --- VINCULACIÓN DE MANEJADORES DE DECONSTRUCCIÓN ---
 
-// Activar/desactivar dibujo
-elements.sketchToggle.addEventListener('change', (e) => {
-    state.sketchMode = e.target.checked;
-    elements.brushControls.classList.toggle('hidden', !state.sketchMode);
-    elements.sketchCanvas.classList.toggle('active', state.sketchMode);
-    if (state.sketchMode) {
-        resizeCanvas();
-    }
-});
-
-// Selección de color de pincel
-document.querySelectorAll('.color-dot').forEach(dot => {
-    dot.addEventListener('click', () => {
-        document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
-        dot.classList.add('active');
-        state.brushColor = dot.dataset.color;
-        
-        state.isEraser = false;
-        elements.eraserBtn.classList.remove('active');
-    });
-});
-
-// Grosor del pincel
-elements.brushSize.addEventListener('input', (e) => {
-    state.brushSize = parseInt(e.target.value, 10);
-    elements.brushSizeVal.textContent = `${state.brushSize}px`;
-});
-
-// Opacidad del lienzo
-elements.sketchOpacity.addEventListener('input', (e) => {
-    const opacityPct = parseInt(e.target.value, 10);
-    state.sketchOpacity = opacityPct / 100;
-    elements.sketchOpacityVal.textContent = `${opacityPct}%`;
-    elements.sketchCanvas.style.opacity = state.sketchOpacity;
-});
-
-// Alternar borrador
-elements.eraserBtn.addEventListener('click', () => {
-    state.isEraser = !state.isEraser;
-    elements.eraserBtn.classList.toggle('active', state.isEraser);
-});
-
-// Limpiar lienzo
-elements.clearSketchBtn.addEventListener('click', clearCanvas);
-
 // Filtros de abstracción
 elements.filterBlur.addEventListener('change', (e) => {
     state.activeFilters.blur = e.target.checked;
+    elements.blurLevelControl.classList.toggle('hidden', !e.target.checked);
+    applyVisualFilters();
+});
+
+elements.blurLevel.addEventListener('input', (e) => {
+    state.blurLevel = parseInt(e.target.value, 10);
+    elements.blurLevelVal.textContent = `${state.blurLevel}px`;
     applyVisualFilters();
 });
 
@@ -771,182 +642,23 @@ elements.filterGrayscale.addEventListener('change', (e) => {
     applyVisualFilters();
 });
 
-// Eventos del Canvas
-elements.sketchCanvas.addEventListener('mousedown', startDrawing);
-elements.sketchCanvas.addEventListener('mousemove', draw);
-window.addEventListener('mouseup', stopDrawing);
-
-elements.sketchCanvas.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    startDrawing(e);
-}, { passive: false });
-
-elements.sketchCanvas.addEventListener('touchmove', (e) => {
-    e.preventDefault();
-    draw(e);
-}, { passive: false });
-
-window.addEventListener('touchend', stopDrawing);
-
-// Ajustar canvas en carga de imagen y redimensionar ventana
+// Ajustar contornos en carga de imagen y redimensionar ventana
 elements.activeImage.addEventListener('load', () => {
-    clearCanvas();
-    resizeCanvas();
+    if (state.imageToSketch) {
+        updateImageContours();
+    }
+    updateGridOverlay();
 });
 
-window.addEventListener('resize', resizeCanvas);
-
-
-function analyzeGeneralObject() {
-    const img = elements.activeImage;
-    const canvas = elements.sketchCanvas;
-    if (!canvas || !img) return;
-    const ctx = canvas.getContext('2d');
-    
-    // Crear un canvas temporal de análisis
-    const tempCanvas = document.createElement('canvas');
-    const tempCtx = tempCanvas.getContext('2d');
-    
-    // Dimensiones de análisis pequeñas para garantizar velocidad instántanea
-    const size = 150;
-    tempCanvas.width = size;
-    tempCanvas.height = size;
-    
-    try {
-        tempCtx.drawImage(img, 0, 0, size, size);
-    } catch (e) {
-        console.warn('No se pudo leer la imagen del canvas (CORS o carga incompleta).');
-        return;
-    }
-    
-    let imgData;
-    try {
-        imgData = tempCtx.getImageData(0, 0, size, size);
-    } catch (e) {
-        console.warn('Seguridad de origen bloqueó getImageData (CORS).');
-        return;
-    }
-    
-    const data = imgData.data;
-    const edges = new Float32Array(size * size);
-    let minX = size, maxX = 0, minY = size, maxY = 0;
-    let sumX = 0, sumY = 0, edgeCount = 0;
-    
-    // Operador Sobel para detección de contornos
-    for (let y = 1; y < size - 1; y++) {
-        for (let x = 1; x < size - 1; x++) {
-            // Sobel X
-            const gx = 
-                -1 * data[((y-1)*size + (x-1))*4] + 1 * data[((y-1)*size + (x+1))*4] +
-                -2 * data[(y*size + (x-1))*4]     + 2 * data[(y*size + (x+1))*4] +
-                -1 * data[((y+1)*size + (x-1))*4] + 1 * data[((y+1)*size + (x+1))*4];
-                
-            // Sobel Y
-            const gy = 
-                -1 * data[((y-1)*size + (x-1))*4] - 2 * data[((y-1)*size + x)*4] - 1 * data[((y-1)*size + (x+1))*4] +
-                1 * data[((y+1)*size + (x-1))*4] + 2 * data[((y+1)*size + x)*4] + 1 * data[((y+1)*size + (x+1))*4];
-                
-            const val = Math.hypot(gx, gy);
-            
-            if (val > 140) { // Umbral de borde
-                edges[y * size + x] = val;
-                if (x < minX) minX = x;
-                if (x > maxX) maxX = x;
-                if (y < minY) minY = y;
-                if (y > maxY) maxY = y;
-                
-                sumX += x;
-                sumY += y;
-                edgeCount++;
-            }
-        }
-    }
-    
-    clearCanvas();
-    
-    if (edgeCount === 0) return;
-    
-    // Escalar coordenadas de regreso al tamaño renderizado visible
-    const scaleX = canvas.width / size;
-    const scaleY = canvas.height / size;
-    
-    const boxW = (maxX - minX) * scaleX;
-    const boxH = (maxY - minY) * scaleY;
-    const centerX = (sumX / edgeCount) * scaleX;
-    const centerY = (sumY / edgeCount) * scaleY;
-    
-    // Estilo de Boceto Manual (Rosa translúcido y Púrpura)
-    ctx.strokeStyle = '#a21caf'; // Púrpura de boceto
-    ctx.fillStyle = 'rgba(236, 72, 153, 0.15)'; // Rosa translúcido
-    
-    // 1. DIBUJAR LA FORMA GEOMÉTRICA BÁSICA (Deconstrucción simple de esfera/óvalo, ej. manzana)
-    ctx.beginPath();
-    ctx.ellipse(centerX, centerY, boxW * 0.46, boxH * 0.46, 0, 0, 2 * Math.PI);
-    ctx.fill();
-    ctx.lineWidth = 1.3;
-    ctx.stroke();
-    
-    // Si el modo boceto de imagen está activo, ya tenemos los contornos de alta resolución sin salirse.
-    // Solo dibujamos la elipse como forma básica de encaje y evitamos trazar las líneas rectas aproximadas.
+window.addEventListener('resize', () => {
     if (state.imageToSketch) {
-        return;
+        updateImageContours();
     }
-    
-    // 2. DIBUJAR CONTORNOS CON EFECTO DE LÍNEA SKETCHY / HECHA A MANO (Boceto fiel)
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = '#86198f'; // Púrpura más marcado para contornos
-    
-    // Muestrear puntos de borde para simplificar y trazar segmentos
-    const points = [];
-    const step = 4; // Muestrear cada 4 píxeles para simplificar la forma
-    for (let y = minY; y <= maxY; y += step) {
-        for (let x = minX; x <= maxX; x += step) {
-            if (edges[y * size + x] > 0) {
-                points.push({ x: x * scaleX, y: y * scaleY });
-            }
-        }
-    }
-    
-    const maxConnectDist = Math.max(canvas.width, canvas.height) * 0.04; // Distancia máxima para conectar trazos
-    const visited = new Set();
-    
-    for (let i = 0; i < points.length; i++) {
-        if (visited.has(i)) continue;
-        
-        ctx.beginPath();
-        let curr = points[i];
-        
-        // Jitter (pequeña perturbación aleatoria) para crear el efecto de "trazado a mano"
-        const jitter = () => (Math.random() - 0.5) * 1.8;
-        
-        ctx.moveTo(curr.x + jitter(), curr.y + jitter());
-        visited.add(i);
-        
-        let foundNext = true;
-        while (foundNext) {
-            foundNext = false;
-            let minDist = maxConnectDist;
-            let nextIdx = -1;
-            
-            for (let j = 0; j < points.length; j++) {
-                if (visited.has(j)) continue;
-                const dist = Math.hypot(points[j].x - curr.x, points[j].y - curr.y);
-                if (dist < minDist) {
-                    minDist = dist;
-                    nextIdx = j;
-                }
-            }
-            
-            if (nextIdx !== -1) {
-                curr = points[nextIdx];
-                ctx.lineTo(curr.x + jitter(), curr.y + jitter());
-                visited.add(nextIdx);
-                foundNext = true;
-            }
-        }
-        ctx.stroke();
-    }
-}
+    updateGridOverlay();
+});
+
+
+
 
 function updateImageContours() {
     const img = elements.activeImage;
@@ -961,22 +673,37 @@ function updateImageContours() {
         return;
     }
     
-    const width = img.clientWidth;
-    const height = img.clientHeight;
+    // Calcular las dimensiones reales de la imagen renderizada con object-fit: contain
+    const containerWidth = img.clientWidth;
+    const containerHeight = img.clientHeight;
+    const naturalWidth = img.naturalWidth;
+    const naturalHeight = img.naturalHeight;
     
-    if (width === 0 || height === 0) return;
+    if (containerWidth === 0 || containerHeight === 0) return;
     
-    // Redimensionar canvas de contornos para alinearse 1:1
-    canvas.width = width;
-    canvas.height = height;
+    const scale = Math.min(containerWidth / naturalWidth, containerHeight / naturalHeight);
+    const renderedWidth = Math.round(naturalWidth * scale);
+    const renderedHeight = Math.round(naturalHeight * scale);
+    
+    // Calcular el offset para centrar el canvas sobre la imagen visible
+    const offsetX = Math.round((containerWidth - renderedWidth) / 2);
+    const offsetY = Math.round((containerHeight - renderedHeight) / 2);
+    
+    // Posicionar y dimensionar el canvas exactamente sobre la imagen renderizada
+    canvas.width = renderedWidth;
+    canvas.height = renderedHeight;
+    canvas.style.left = offsetX + 'px';
+    canvas.style.top = offsetY + 'px';
+    canvas.style.width = renderedWidth + 'px';
+    canvas.style.height = renderedHeight + 'px';
     
     // Crear un canvas temporal para procesamiento a resolución balanceada (max 800px para fluidez instantánea)
     const tempCanvas = document.createElement('canvas');
     const tempCtx = tempCanvas.getContext('2d');
     
     const maxDimension = 800;
-    let procWidth = img.naturalWidth;
-    let procHeight = img.naturalHeight;
+    let procWidth = naturalWidth;
+    let procHeight = naturalHeight;
     
     if (procWidth > maxDimension || procHeight > maxDimension) {
         if (procWidth > procHeight) {
@@ -1097,22 +824,16 @@ function updateImageContours() {
     baseCtx.putImageData(baseImgData, 0, 0);
     graphCtx.putImageData(graphImgData, 0, 0);
     
-    ctx.clearRect(0, 0, width, height);
+    ctx.clearRect(0, 0, renderedWidth, renderedHeight);
     
     // Dibujar capa 1 (Boceto de construcción) con un ligero escalado/desenfoque para simular volumen
     ctx.globalAlpha = 0.55;
-    ctx.drawImage(baseOutCanvas, 0, 0, procWidth, procHeight, -1, -1, width + 2, height + 2);
+    ctx.drawImage(baseOutCanvas, 0, 0, procWidth, procHeight, -1, -1, renderedWidth + 2, renderedHeight + 2);
     
     // Dibujar capa 2 (Grafito detallado) exactamente en su posición
     ctx.globalAlpha = 1.0;
-    ctx.drawImage(graphOutCanvas, 0, 0, procWidth, procHeight, 0, 0, width, height);
+    ctx.drawImage(graphOutCanvas, 0, 0, procWidth, procHeight, 0, 0, renderedWidth, renderedHeight);
 }
-
-// Vinculación de toggle Modo Boceto (Ocultar imagen)
-elements.hideImageToggle.addEventListener('change', (e) => {
-    state.hideImage = e.target.checked;
-    elements.imageWrapper.classList.toggle('hide-image', state.hideImage);
-});
 
 // Vinculación de toggle Imagen a Boceto (Sin fondo)
 elements.imageToSketchToggle.addEventListener('change', (e) => {
@@ -1121,13 +842,11 @@ elements.imageToSketchToggle.addEventListener('change', (e) => {
     
     if (state.imageToSketch) {
         updateImageContours();
-        analyzeGeneralObject();
     } else {
         const canvas = elements.contourCanvas;
         if (canvas) {
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
-        clearCanvas();
     }
 });

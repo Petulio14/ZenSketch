@@ -891,8 +891,8 @@ body:not(.light-theme) .theme-toggle-btn .moon-icon {
 
 .image-wrapper {
     position: relative;
-    max-width: 100%;
-    max-height: 100%;
+    width: 100%;
+    height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -903,12 +903,26 @@ body:not(.light-theme) .theme-toggle-btn .moon-icon {
 }
 
 #active-image {
-    max-width: 100%;
-    max-height: 90vh;
+    width: 100%;
+    height: 100%;
     object-fit: contain;
     display: block;
     transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     transform-origin: center center;
+}
+
+.contour-canvas {
+    position: absolute;
+    pointer-events: none;
+    z-index: 2;
+}
+
+.image-wrapper.image-to-sketch {
+    background-color: var(--paper-bg, #f5f0eb);
+}
+
+.image-wrapper.image-to-sketch #active-image {
+    opacity: 0;
 }
 
 /* Clases de volteo espejo */
@@ -927,12 +941,10 @@ body:not(.light-theme) .theme-toggle-btn .moon-icon {
 /* Capa de Cuadrícula */
 .grid-overlay {
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
     pointer-events: none;
     z-index: 2;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    transform-origin: center center;
 }
 
 /* Regla de tercios */
@@ -990,6 +1002,20 @@ body:not(.light-theme) .theme-toggle-btn .moon-icon {
     margin-top: 12px;
     border-top: 1px solid var(--border-color);
     padding-top: 12px !important;
+}
+
+.sub-control {
+    background: rgba(0, 0, 0, 0.15);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+    animation: slideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body.light-theme .sub-control {
+    background: rgba(0, 0, 0, 0.03);
 }
 
 .brush-controls-container {
@@ -1170,14 +1196,6 @@ body.light-theme {
     transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease !important;
 }
 
-.image-wrapper.hide-image {
-    background-color: var(--sketch-paper-bg) !important;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
-}
-
-.image-wrapper.hide-image #active-image {
-    opacity: 0 !important;
-}
 
 /* --- CANVAS DE CONTORNOS --- */
 .contour-canvas {
