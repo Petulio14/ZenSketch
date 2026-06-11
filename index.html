@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Antigravity Sketch - Práctica de Dibujo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <!-- Conversor de imágenes HEIC/HEIF a JPEG (Web-based fallback) -->
+    <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar lateral de controles -->
+        <aside class="sidebar">
+            <div class="logo-area">
+                <div class="logo-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                </div>
+                <div>
+                    <h1>SketchPractice</h1>
+                    <p class="subtitle">Tecnología + Arte</p>
+                </div>
+            </div>
+
+            <!-- Botones de carga principal -->
+            <div class="control-section upload-section">
+                <div class="upload-grid">
+                    <label for="folder-upload" class="upload-btn" title="Cargar todas las imágenes de una carpeta">
+                        <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="M12 10v6"/><path d="M9 13h6"/></svg>
+                        <span>Carpeta</span>
+                    </label>
+                    <input type="file" id="folder-upload" webkitdirectory directory multiple class="hidden-input">
+                    
+                    <label for="files-upload" class="upload-btn" title="Seleccionar archivos individuales">
+                        <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M9 15h6"/><path d="M12 12v6"/></svg>
+                        <span>Imágenes</span>
+                    </label>
+                    <input type="file" id="files-upload" multiple accept=".jpg,.jpeg,.png,.webp,.gif,.tiff,.tif,.bmp,.heic,.heif,.avif,image/*" class="hidden-input">
+                </div>
+            </div>
+
+            <!-- Progreso y estadísticas de sesión -->
+            <div class="control-section stats-section disabled" id="stats-panel">
+                <div class="section-title">Progreso de Sesión</div>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <span class="stat-label">Imagen</span>
+                        <span class="stat-value" id="current-index-val">0 / 0</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Completado</span>
+                        <span class="stat-value" id="percent-val">0%</span>
+                    </div>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="session-progress-bar" style="width: 0%;"></div>
+                </div>
+                <div class="file-info" id="file-info-text">Ninguna carpeta seleccionada</div>
+            </div>
+
+            <!-- Temporizador -->
+            <div class="control-section timer-section">
+                <div class="section-title">Temporizador</div>
+                
+                <!-- Reloj Visual Circular o Numérico -->
+                <div class="timer-display-container">
+                    <svg class="timer-ring" width="120" height="120">
+                        <circle class="timer-ring-bg" stroke="rgba(255,255,255,0.05)" stroke-width="6" fill="transparent" r="52" cx="60" cy="60"/>
+                        <circle class="timer-ring-progress" id="timer-ring" stroke="var(--primary-glow)" stroke-width="6" fill="transparent" r="52" cx="60" cy="60"/>
+                    </svg>
+                    <div class="timer-time" id="timer-text">01:00</div>
+                </div>
+
+                <!-- Botones de temporizador preestablecidos -->
+                <div class="timer-presets">
+                    <button class="preset-btn" data-time="30">30s</button>
+                    <button class="preset-btn active" data-time="60">1m</button>
+                    <button class="preset-btn" data-time="120">2m</button>
+                    <button class="preset-btn" data-time="300">5m</button>
+                    <button class="preset-btn" data-time="600">10m</button>
+                </div>
+
+                <!-- Personalizar temporizador -->
+                <div class="custom-timer">
+                    <div class="input-group">
+                        <input type="number" id="custom-min" min="0" max="99" value="1" placeholder="Min">
+                        <span>min</span>
+                    </div>
+                    <div class="input-group">
+                        <input type="number" id="custom-sec" min="0" max="59" value="0" placeholder="Seg">
+                        <span>seg</span>
+                    </div>
+                    <button class="btn-secondary" id="apply-custom-time">Aplicar</button>
+                </div>
+            </div>
+
+            <!-- Controles de navegación y reproducción -->
+            <div class="control-section playback-section disabled" id="playback-panel">
+                <div class="playback-controls">
+                    <button class="control-btn" id="prev-btn" title="Anterior (Flecha Izquierda)">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" x2="5" y1="19" y2="5"/></svg>
+                    </button>
+                    
+                    <button class="control-btn play-btn" id="play-btn" title="Reproducir/Pausar (Espacio)">
+                        <svg id="play-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+                        <svg id="pause-icon" class="hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg>
+                    </button>
+                    
+                    <button class="control-btn" id="next-btn" title="Siguiente (Flecha Derecha)">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" x2="19" y1="5" y2="19"/></svg>
+                    </button>
+                </div>
+
+                <div class="action-buttons">
+                    <button class="action-btn" id="shuffle-btn" title="Mezclar imágenes y reiniciar orden">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-2-2h-3.5A3.5 3.5 0 0 0 12 9.5c0 1.9-1.6 3.5-3.5 3.5H3"/><path d="m18 5 3 3-3 3"/><path d="M3 18h5.5a3.5 3.5 0 0 0 3.2-2.2"/><path d="M15.5 12.8A3.5 3.5 0 0 0 19 16h2"/><path d="m18 13 3 3-3 3"/></svg>
+                        <span>Reiniciar Mezcla</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Utilidades y Filtros -->
+            <div class="control-section options-section">
+                <div class="section-title">Ayudas visuales</div>
+                
+                <!-- Cuadrícula -->
+                <div class="option-row">
+                    <label class="option-label">
+                        <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>
+                        <span>Cuadrícula</span>
+                    </label>
+                    <select id="grid-select" class="select-input">
+                        <option value="none">Ninguna</option>
+                        <option value="thirds">Regla de Tercios</option>
+                        <option value="grid2">Cuadrícula 2x2</option>
+                        <option value="grid4">Cuadrícula 4x4</option>
+                    </select>
+                </div>
+
+                <!-- Espejo -->
+                <div class="option-row">
+                    <label class="option-label">
+                        <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M4 12H2"/><path d="M22 12h-2"/><path d="M16 8h-4"/><path d="M12 16H8"/><path d="m15 5-3 3"/><path d="m9 19 3-3"/></svg>
+                        <span>Voltear imagen</span>
+                    </label>
+                    <div class="mirror-buttons">
+                        <button class="toggle-btn" id="mirror-h-btn" title="Espejo Horizontal (H)">H</button>
+                        <button class="toggle-btn" id="mirror-v-btn" title="Espejo Vertical (V)">V</button>
+                    </div>
+                </div>
+
+                <!-- Sonido -->
+                <div class="option-row">
+                    <label class="option-label">
+                        <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                        <span>Aviso sonoro</span>
+                    </label>
+                    <label class="switch">
+                        <input type="checkbox" id="sound-toggle" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Área de visualización principal -->
+        <main class="viewport">
+            <!-- Vista de carga inicial / Bienvenida -->
+            <div class="landing-container" id="landing-screen">
+                <div class="landing-card">
+                    <div class="landing-icon-wrapper">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                    </div>
+                    <h2>Comienza tu Práctica</h2>
+                    <p>Carga una carpeta con tus imágenes de referencia de dibujo. Las imágenes se ordenarán al azar sin repetirse.</p>
+                    <div class="landing-buttons">
+                        <label for="folder-upload-landing" class="btn-primary" title="Cargar todas las imágenes de una carpeta completa">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+                            <span>Cargar Carpeta</span>
+                        </label>
+                        <input type="file" id="folder-upload-landing" webkitdirectory directory multiple class="hidden-input">
+
+                        <label for="files-upload-landing" class="btn-primary btn-alt" title="Elegir varias imágenes individuales desde tus archivos">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M9 15h6"/><path d="M12 12v6"/></svg>
+                            <span>Elegir Archivos</span>
+                        </label>
+                        <input type="file" id="files-upload-landing" multiple accept=".jpg,.jpeg,.png,.webp,.gif,.tiff,.tif,.bmp,.heic,.heif,.avif,image/*" class="hidden-input">
+                    </div>
+                    
+                    <div class="landing-shortcuts">
+                        <h3>Atajos Rápidos de Teclado</h3>
+                        <div class="shortcut-list">
+                            <div class="shortcut-item"><span>Espacio</span><p>Pausa / Reproducir</p></div>
+                            <div class="shortcut-item"><span>Flecha Derecha</span><p>Siguiente imagen</p></div>
+                            <div class="shortcut-item"><span>Flecha Izquierda</span><p>Imagen anterior</p></div>
+                            <div class="shortcut-item"><span>Teclas H / V</span><p>Espejo Horiz. / Vert.</p></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contenedor del Visor de Imagen de práctica -->
+            <div class="image-viewer-container hidden" id="image-viewer">
+                <div class="image-wrapper" id="image-wrapper">
+                    <img id="active-image" src="" alt="Referencia de dibujo">
+                    
+                    <!-- Capas de Cuadrícula -->
+                    <div class="grid-overlay hidden" id="grid-overlay">
+                        <!-- Generado dinámicamente por CSS/JS -->
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Sonidos integrados usando AudioContext (sin necesidad de archivos de sonido externos) -->
+    <script src="app.js"></script>
+</body>
+</html>
