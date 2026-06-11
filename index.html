@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ZenSketch - Práctica de Dibujo</title>
+    <meta name="description" content="ZenSketch — Herramienta de práctica de dibujo inteligente con descomposición visual, temporizador, filtros de abstracción y cuadrículas adaptativas. Todo en tu navegador, sin instalación.">
+    <meta name="theme-color" content="#09090e">
+    <title>ZenSketch - Práctica de Dibujo Inteligente</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -21,6 +24,11 @@
         })();
     </script>
     <div class="app-container">
+        <!-- Botón hamburguesa para sidebar en móvil -->
+        <button class="sidebar-toggle" id="sidebar-toggle" title="Mostrar/Ocultar panel">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" x2="21" y1="6" y2="6"/><line x1="3" x2="21" y1="12" y2="12"/><line x1="3" x2="21" y1="18" y2="18"/></svg>
+        </button>
+        <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
         <!-- Sidebar lateral de controles -->
         <aside class="sidebar">
             <div class="logo-area">
@@ -33,10 +41,15 @@
                         <p class="subtitle">Tecnología + Arte</p>
                     </div>
                 </div>
-                <button class="theme-toggle-btn" id="theme-toggle" title="Cambiar tema">
-                    <svg class="sun-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
-                    <svg class="moon-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
-                </button>
+                <div style="display:flex;gap:6px;">
+                    <button class="fullscreen-btn" id="fullscreen-btn" title="Pantalla completa (F)">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+                    </button>
+                    <button class="theme-toggle-btn" id="theme-toggle" title="Cambiar tema">
+                        <svg class="sun-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+                        <svg class="moon-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                    </button>
+                </div>
             </div>
 
             <!-- Botones de carga principal -->
@@ -58,56 +71,59 @@
 
             <!-- Progreso y estadísticas de sesión -->
             <div class="control-section stats-section disabled" id="stats-panel">
-                <div class="section-title">Progreso de Sesión</div>
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <span class="stat-label">Imagen</span>
-                        <span class="stat-value" id="current-index-val">0 / 0</span>
+                <div class="section-title" data-section="stats">Progreso de Sesión</div>
+                <div class="section-content">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <span class="stat-label">Imagen</span>
+                            <span class="stat-value" id="current-index-val">0 / 0</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Completado</span>
+                            <span class="stat-value" id="percent-val">0%</span>
+                        </div>
                     </div>
-                    <div class="stat-card">
-                        <span class="stat-label">Completado</span>
-                        <span class="stat-value" id="percent-val">0%</span>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="session-progress-bar" style="width: 0%;"></div>
                     </div>
+                    <div class="file-info" id="file-info-text">Ninguna carpeta seleccionada</div>
                 </div>
-                <div class="progress-bar-container">
-                    <div class="progress-bar" id="session-progress-bar" style="width: 0%;"></div>
-                </div>
-                <div class="file-info" id="file-info-text">Ninguna carpeta seleccionada</div>
             </div>
 
             <!-- Temporizador -->
             <div class="control-section timer-section">
-                <div class="section-title">Temporizador</div>
-                
-                <!-- Reloj Visual Circular o Numérico -->
-                <div class="timer-display-container">
-                    <svg class="timer-ring" width="120" height="120">
-                        <circle class="timer-ring-bg" stroke="rgba(255,255,255,0.05)" stroke-width="6" fill="transparent" r="52" cx="60" cy="60"/>
-                        <circle class="timer-ring-progress" id="timer-ring" stroke="var(--primary-glow)" stroke-width="6" fill="transparent" r="52" cx="60" cy="60"/>
-                    </svg>
-                    <div class="timer-time" id="timer-text">01:00</div>
-                </div>
-
-                <!-- Botones de temporizador preestablecidos -->
-                <div class="timer-presets">
-                    <button class="preset-btn" data-time="30">30s</button>
-                    <button class="preset-btn active" data-time="60">1m</button>
-                    <button class="preset-btn" data-time="120">2m</button>
-                    <button class="preset-btn" data-time="300">5m</button>
-                    <button class="preset-btn" data-time="600">10m</button>
-                </div>
-
-                <!-- Personalizar temporizador -->
-                <div class="custom-timer">
-                    <div class="input-group">
-                        <input type="number" id="custom-min" min="0" max="99" value="1" placeholder="Min">
-                        <span>min</span>
+                <div class="section-title" data-section="timer">Temporizador</div>
+                <div class="section-content">
+                    <!-- Reloj Visual Circular o Numérico -->
+                    <div class="timer-display-container">
+                        <svg class="timer-ring" width="120" height="120">
+                            <circle class="timer-ring-bg" stroke="rgba(255,255,255,0.05)" stroke-width="6" fill="transparent" r="52" cx="60" cy="60"/>
+                            <circle class="timer-ring-progress" id="timer-ring" stroke="var(--primary-glow)" stroke-width="6" fill="transparent" r="52" cx="60" cy="60"/>
+                        </svg>
+                        <div class="timer-time" id="timer-text">01:00</div>
                     </div>
-                    <div class="input-group">
-                        <input type="number" id="custom-sec" min="0" max="59" value="0" placeholder="Seg">
-                        <span>seg</span>
+
+                    <!-- Botones de temporizador preestablecidos -->
+                    <div class="timer-presets">
+                        <button class="preset-btn" data-time="30">30s</button>
+                        <button class="preset-btn active" data-time="60">1m</button>
+                        <button class="preset-btn" data-time="120">2m</button>
+                        <button class="preset-btn" data-time="300">5m</button>
+                        <button class="preset-btn" data-time="600">10m</button>
                     </div>
-                    <button class="btn-secondary" id="apply-custom-time">Aplicar</button>
+
+                    <!-- Personalizar temporizador -->
+                    <div class="custom-timer">
+                        <div class="input-group">
+                            <input type="number" id="custom-min" min="0" max="99" value="1" placeholder="Min">
+                            <span>min</span>
+                        </div>
+                        <div class="input-group">
+                            <input type="number" id="custom-sec" min="0" max="59" value="0" placeholder="Seg">
+                            <span>seg</span>
+                        </div>
+                        <button class="btn-secondary" id="apply-custom-time">Aplicar</button>
+                    </div>
                 </div>
             </div>
 
@@ -138,103 +154,161 @@
 
             <!-- Utilidades y Filtros -->
             <div class="control-section options-section">
-                <div class="section-title">Ayudas visuales</div>
-                
-                <!-- Cuadrícula -->
-                <div class="option-row">
-                    <label class="option-label">
-                        <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>
-                        <span>Cuadrícula</span>
-                    </label>
-                    <select id="grid-select" class="select-input">
-                        <option value="none">Ninguna</option>
-                        <option value="thirds">Regla de Tercios</option>
-                        <option value="grid2">Cuadrícula 2x2</option>
-                        <option value="grid4">Cuadrícula 4x4</option>
-                    </select>
-                </div>
-
-                <!-- Espejo -->
-                <div class="option-row">
-                    <label class="option-label">
-                        <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M4 12H2"/><path d="M22 12h-2"/><path d="M16 8h-4"/><path d="M12 16H8"/><path d="m15 5-3 3"/><path d="m9 19 3-3"/></svg>
-                        <span>Voltear imagen</span>
-                    </label>
-                    <div class="mirror-buttons">
-                        <button class="toggle-btn" id="mirror-h-btn" title="Espejo Horizontal (H)">H</button>
-                        <button class="toggle-btn" id="mirror-v-btn" title="Espejo Vertical (V)">V</button>
+                <div class="section-title" data-section="visual-aids">Ayudas visuales</div>
+                <div class="section-content">
+                    <!-- Cuadrícula -->
+                    <div class="option-row">
+                        <label class="option-label">
+                            <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>
+                            <span>Cuadrícula</span>
+                        </label>
+                        <select id="grid-select" class="select-input">
+                            <option value="none">Ninguna</option>
+                            <option value="thirds">Regla de Tercios</option>
+                            <option value="grid2">Cuadrícula 2x2</option>
+                            <option value="grid4">Cuadrícula 4x4</option>
+                        </select>
                     </div>
-                </div>
 
-                <!-- Sonido -->
-                <div class="option-row">
-                    <label class="option-label">
-                        <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-                        <span>Aviso sonoro</span>
-                    </label>
-                    <label class="switch">
-                        <input type="checkbox" id="sound-toggle" checked>
-                        <span class="slider"></span>
-                    </label>
+                    <!-- Espejo -->
+                    <div class="option-row">
+                        <label class="option-label">
+                            <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M4 12H2"/><path d="M22 12h-2"/><path d="M16 8h-4"/><path d="M12 16H8"/><path d="m15 5-3 3"/><path d="m9 19 3-3"/></svg>
+                            <span>Voltear imagen</span>
+                        </label>
+                        <div class="mirror-buttons">
+                            <button class="toggle-btn" id="mirror-h-btn" title="Espejo Horizontal (H)">H</button>
+                            <button class="toggle-btn" id="mirror-v-btn" title="Espejo Vertical (V)">V</button>
+                        </div>
+                    </div>
+
+                    <!-- Sonido -->
+                    <div class="option-row">
+                        <label class="option-label">
+                            <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                            <span>Aviso sonoro</span>
+                        </label>
+                        <label class="switch">
+                            <input type="checkbox" id="sound-toggle" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
                 </div>
             </div>
 
             <!-- Deconstrucción Visual -->
             <div class="control-section deconstruct-section">
-                <div class="section-title">Deconstrucción Visual</div>
-                
-                <!-- Imagen a Boceto (Sin fondo) -->
-                <div class="option-row">
-                    <label class="option-label">
-                        <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m11.314 11.314l.707.707M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>
-                        <span>Imagen a Boceto (Sin fondo)</span>
-                    </label>
-                    <label class="switch">
-                        <input type="checkbox" id="image-to-sketch-toggle">
-                        <span class="slider"></span>
-                    </label>
-                </div>
-
-                <!-- Filtros de abstracción visual -->
-                <div class="option-row spacer-top">
-                    <label class="option-label">
-                        <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 22 17 7"/><path d="M9 14h3l5 5V9h-6l-2 5Z"/><path d="m14 3-3 3 6 6 3-3-6-6Z"/></svg>
-                        <span>Desenfoque (Blur)</span>
-                    </label>
-                    <label class="switch">
-                        <input type="checkbox" id="filter-blur">
-                        <span class="slider"></span>
-                    </label>
-                </div>
-
-                <div class="sub-control hidden" id="blur-level-control">
-                    <div class="brush-config-row">
-                        <span class="config-label">Nivel</span>
-                        <input type="range" id="blur-level" min="1" max="30" value="12" class="range-input">
-                        <span class="range-val" id="blur-level-val">12px</span>
+                <div class="section-title" data-section="deconstruct">Deconstrucción Visual</div>
+                <div class="section-content">
+                    <!-- Imagen a Boceto (Sin fondo) -->
+                    <div class="option-row">
+                        <label class="option-label">
+                            <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m11.314 11.314l.707.707M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>
+                            <span>Imagen a Boceto</span>
+                        </label>
+                        <label class="switch">
+                            <input type="checkbox" id="image-to-sketch-toggle">
+                            <span class="slider"></span>
+                        </label>
                     </div>
-                </div>
 
-                <div class="option-row">
-                    <label class="option-label">
-                        <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 0 0 20Z"/></svg>
-                        <span>Masa de Valores</span>
-                    </label>
-                    <label class="switch">
-                        <input type="checkbox" id="filter-threshold">
-                        <span class="slider"></span>
-                    </label>
-                </div>
+                    <!-- Filtros de abstracción visual -->
+                    <div class="option-row spacer-top">
+                        <label class="option-label">
+                            <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 22 17 7"/><path d="M9 14h3l5 5V9h-6l-2 5Z"/><path d="m14 3-3 3 6 6 3-3-6-6Z"/></svg>
+                            <span>Desenfoque (Blur)</span>
+                        </label>
+                        <label class="switch">
+                            <input type="checkbox" id="filter-blur">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
 
-                <div class="option-row">
-                    <label class="option-label">
-                        <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4 12H2"/><path d="M22 12h-2"/></svg>
-                        <span>Escala de Grises</span>
-                    </label>
-                    <label class="switch">
-                        <input type="checkbox" id="filter-grayscale">
-                        <span class="slider"></span>
-                    </label>
+                    <div class="sub-control hidden" id="blur-level-control">
+                        <div class="brush-config-row">
+                            <span class="config-label">Nivel</span>
+                            <input type="range" id="blur-level" min="1" max="30" value="12" class="range-input">
+                            <span class="range-val" id="blur-level-val">12px</span>
+                        </div>
+                    </div>
+
+                    <div class="option-row">
+                        <label class="option-label">
+                            <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 0 0 20Z"/></svg>
+                            <span>Masa de Valores</span>
+                        </label>
+                        <label class="switch">
+                            <input type="checkbox" id="filter-threshold">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="option-row">
+                        <label class="option-label">
+                            <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4 12H2"/><path d="M22 12h-2"/></svg>
+                            <span>Escala de Grises</span>
+                        </label>
+                        <label class="switch">
+                            <input type="checkbox" id="filter-grayscale">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <!-- NUEVO: Posterización Inteligente -->
+                    <div class="option-row spacer-top">
+                        <label class="option-label">
+                            <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                            <span>Posterización</span>
+                        </label>
+                        <label class="switch">
+                            <input type="checkbox" id="filter-posterize">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="sub-control hidden" id="posterize-control">
+                        <div class="brush-config-row">
+                            <span class="config-label">Niveles</span>
+                            <input type="range" id="posterize-level" min="2" max="8" value="4" class="range-input">
+                            <span class="range-val" id="posterize-level-val">4</span>
+                        </div>
+                        <div class="decompose-slider-labels">
+                            <span>Simple</span>
+                            <span>Detallado</span>
+                        </div>
+                    </div>
+
+                    <!-- NUEVO: Revelado Progresivo -->
+                    <div class="option-row">
+                        <label class="option-label">
+                            <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                            <span>Revelado Progresivo</span>
+                        </label>
+                        <label class="switch">
+                            <input type="checkbox" id="progressive-reveal-toggle">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="sub-control hidden" id="reveal-control">
+                        <div class="reveal-steps">
+                            <button class="reveal-step-btn active" data-step="1" title="Solo silueta exterior">Silueta</button>
+                            <button class="reveal-step-btn" data-step="2" title="Silueta + masas de luz/sombra">Masas</button>
+                            <button class="reveal-step-btn" data-step="3" title="Detalles medios">Detalle</button>
+                            <button class="reveal-step-btn" data-step="4" title="Imagen completa">Completa</button>
+                        </div>
+                        <div class="decompose-level-indicator" id="reveal-level-text">Nivel 1 — Solo Silueta</div>
+                    </div>
+
+                    <!-- NUEVO: Líneas de Flujo -->
+                    <div class="option-row">
+                        <label class="option-label">
+                            <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+                            <span>Líneas de Flujo</span>
+                        </label>
+                        <label class="switch">
+                            <input type="checkbox" id="flow-lines-toggle">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
                 </div>
             </div>
         </aside>
@@ -280,6 +354,8 @@
                 <div class="image-wrapper" id="image-wrapper">
                     <img id="active-image" src="" alt="Referencia de dibujo">
                     <canvas id="contour-canvas" class="contour-canvas"></canvas>
+                    <canvas id="flow-canvas" class="flow-canvas"></canvas>
+                    <canvas id="posterize-canvas" class="contour-canvas"></canvas>
                     
                     <!-- Capas de Cuadrícula -->
                     <div class="grid-overlay hidden" id="grid-overlay">

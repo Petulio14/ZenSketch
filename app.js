@@ -23,14 +23,40 @@ const state = {
     activeFilters: {
         blur: false,
         threshold: false,
-        grayscale: false
+        grayscale: false,
+        posterize: false
     },
     blurLevel: 12,
+    posterizeLevel: 4,
     imageToSketch: false,
+    
+    // Descomposición avanzada (Fase 2)
+    progressiveReveal: false,
+    revealStep: 1,       // 1=Silueta, 2=Masas, 3=Detalle, 4=Completa
+    flowLines: false,
     
     // Gestión de memoria
     currentObjectURL: null
 };
+
+// --- SISTEMA DE TOASTS ---
+function showToast(message, type = 'info', duration = 3000) {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        document.body.appendChild(container);
+    }
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `<span>${message}</span>`;
+    container.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('show'));
+    setTimeout(() => {
+        toast.classList.remove('show');
+        toast.addEventListener('transitionend', () => toast.remove());
+    }, duration);
+}
 
 // --- CONSTANTES DE DISEÑO ---
 const RING_CIRCUMFERENCE = 2 * Math.PI * 52; // Radio de 52 -> aprox 326.72
@@ -86,18 +112,49 @@ const elements = {
     filterThreshold: document.getElementById('filter-threshold'),
     filterGrayscale: document.getElementById('filter-grayscale'),
     imageToSketchToggle: document.getElementById('image-to-sketch-toggle'),
-    contourCanvas: document.getElementById('contour-canvas')
+    contourCanvas: document.getElementById('contour-canvas'),
+    
+    // Descomposición avanzada (Fase 2)
+    filterPosterize: document.getElementById('filter-posterize'),
+    posterizeControl: document.getElementById('posterize-control'),
+    posterizeLevel: document.getElementById('posterize-level'),
+    posterizeLevelVal: document.getElementById('posterize-level-val'),
+    posterizeCanvas: document.getElementById('posterize-canvas'),
+    progressiveRevealToggle: document.getElementById('progressive-reveal-toggle'),
+    revealControl: document.getElementById('reveal-control'),
+    revealStepBtns: document.querySelectorAll('.reveal-step-btn'),
+    revealLevelText: document.getElementById('reveal-level-text'),
+    flowLinesToggle: document.getElementById('flow-lines-toggle'),
+    flowCanvas: document.getElementById('flow-canvas'),
+    
+    // UI responsive
+    sidebarToggle: document.getElementById('sidebar-toggle'),
+    sidebarBackdrop: document.getElementById('sidebar-backdrop'),
+    sidebar: document.querySelector('.sidebar'),
+    fullscreenBtn: document.getElementById('fullscreen-btn'),
+    timerSection: document.querySelector('.timer-section')
 };
 
 // --- AUDIO SINTETIZADO (Campana de Meditación) ---
+let _audioCtx = null;
+function getAudioContext() {
+    if (!_audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return null;
+        _audioCtx = new AudioContextClass();
+    }
+    if (_audioCtx.state === 'suspended') {
+        _audioCtx.resume();
+    }
+    return _audioCtx;
+}
+
 function playTimerChime() {
     if (!state.soundEnabled) return;
     
     try {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContext) return;
-        
-        const ctx = new AudioContext();
+        const ctx = getAudioContext();
+        if (!ctx) return;
         
         // Frecuencia fundamental del timbre de la campana (Nota A5)
         const fundamental = 880; 
@@ -154,7 +211,7 @@ function initSession(filesList) {
     });
 
     if (state.images.length === 0) {
-        alert('No se encontraron imágenes válidas en la selección. Asegúrate de elegir archivos con extensiones correctas (.jpg, .png, .webp, .gif, .tiff, .bmp, .heic, .avif, etc.).');
+        showToast('No se encontraron imágenes válidas. Asegúrate de elegir archivos con extensiones correctas (.jpg, .png, .webp, .gif, .tiff, .bmp, .heic, .avif, etc.).', 'error', 5000);
         return;
     }
 
@@ -264,6 +321,11 @@ function showImage(index) {
     
     // Aplicar transformaciones visuales activas
     applyImageTransforms();
+    
+    // Animación de entrada de imagen
+    elements.activeImage.classList.remove('image-entering');
+    void elements.activeImage.offsetWidth; // Force reflow
+    elements.activeImage.classList.add('image-entering');
 }
 
 function nextImage() {
@@ -298,6 +360,11 @@ function updateTimerUI() {
     } else {
         elements.timerRing.style.stroke = 'var(--primary-glow)'; // Color normal
     }
+    
+    // Animación de advertencia cuando quedan menos de 5 segundos
+    if (elements.timerSection) {
+        elements.timerSection.classList.toggle('timer-warning', state.timeLeft <= 5 && state.timeLeft > 0 && state.isPlaying);
+    }
 }
 
 function startTimer() {
@@ -317,11 +384,10 @@ function startTimer() {
             updateTimerUI();
         } else {
             // El tiempo llegó a cero
-            clearInterval(state.timerId);
-            state.isPlaying = false;
             playTimerChime();
             nextImage();
-            startTimer(); // Continuar con la siguiente
+            // nextImage() calls resetTimer() which resets timeLeft,
+            // then we just continue - timer is already running
         }
     }, 1000);
     
@@ -493,7 +559,7 @@ elements.applyCustomTime.addEventListener('click', () => {
     const totalSeconds = (mins * 60) + secs;
     
     if (totalSeconds <= 0) {
-        alert('Por favor introduce un tiempo mayor a 0 segundos.');
+        showToast('Introduce un tiempo mayor a 0 segundos.', 'warning');
         return;
     }
     
@@ -850,3 +916,452 @@ elements.imageToSketchToggle.addEventListener('change', (e) => {
         }
     }
 });
+
+// =====================================================
+// === FASE 2: DESCOMPOSICIÓN AVANZADA DE IMÁGENES ===
+// =====================================================
+
+// --- UTILIDAD: Calcular dimensiones renderizadas de la imagen ---
+function getRenderedImageDimensions() {
+    const img = elements.activeImage;
+    if (!img || !img.complete || img.naturalWidth === 0) return null;
+    
+    const containerWidth = img.clientWidth;
+    const containerHeight = img.clientHeight;
+    const naturalWidth = img.naturalWidth;
+    const naturalHeight = img.naturalHeight;
+    
+    if (containerWidth === 0 || containerHeight === 0) return null;
+    
+    const scale = Math.min(containerWidth / naturalWidth, containerHeight / naturalHeight);
+    const renderedWidth = Math.round(naturalWidth * scale);
+    const renderedHeight = Math.round(naturalHeight * scale);
+    const offsetX = Math.round((containerWidth - renderedWidth) / 2);
+    const offsetY = Math.round((containerHeight - renderedHeight) / 2);
+    
+    return { renderedWidth, renderedHeight, offsetX, offsetY, naturalWidth, naturalHeight, scale };
+}
+
+// --- UTILIDAD: Obtener datos de imagen procesados a resolución manejable ---
+function getProcessedImageData(maxDimension = 600) {
+    const img = elements.activeImage;
+    if (!img || !img.complete || img.naturalWidth === 0) return null;
+    
+    let procWidth = img.naturalWidth;
+    let procHeight = img.naturalHeight;
+    
+    if (procWidth > maxDimension || procHeight > maxDimension) {
+        if (procWidth > procHeight) {
+            procHeight = Math.round((procHeight * maxDimension) / procWidth);
+            procWidth = maxDimension;
+        } else {
+            procWidth = Math.round((procWidth * maxDimension) / procHeight);
+            procHeight = maxDimension;
+        }
+    }
+    
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCanvas.width = procWidth;
+    tempCanvas.height = procHeight;
+    
+    try {
+        tempCtx.drawImage(img, 0, 0, procWidth, procHeight);
+        const imgData = tempCtx.getImageData(0, 0, procWidth, procHeight);
+        return { data: imgData.data, width: procWidth, height: procHeight, canvas: tempCanvas, ctx: tempCtx };
+    } catch (e) {
+        console.warn('Error al procesar imagen (CORS):', e);
+        return null;
+    }
+}
+
+// --- 2.1: POSTERIZACIÓN INTELIGENTE ---
+function applyPosterization() {
+    const canvas = elements.posterizeCanvas;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    
+    if (!state.activeFilters.posterize) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        canvas.style.display = 'none';
+        return;
+    }
+    
+    const dims = getRenderedImageDimensions();
+    if (!dims) return;
+    
+    const processed = getProcessedImageData(800);
+    if (!processed) return;
+    
+    // Posicionar el canvas
+    canvas.width = dims.renderedWidth;
+    canvas.height = dims.renderedHeight;
+    canvas.style.left = dims.offsetX + 'px';
+    canvas.style.top = dims.offsetY + 'px';
+    canvas.style.width = dims.renderedWidth + 'px';
+    canvas.style.height = dims.renderedHeight + 'px';
+    canvas.style.display = 'block';
+    
+    const levels = state.posterizeLevel;
+    const data = processed.data;
+    const outCanvas = document.createElement('canvas');
+    outCanvas.width = processed.width;
+    outCanvas.height = processed.height;
+    const outCtx = outCanvas.getContext('2d');
+    const outData = outCtx.createImageData(processed.width, processed.height);
+    const out = outData.data;
+    
+    const step = 255 / (levels - 1);
+    
+    for (let i = 0; i < data.length; i += 4) {
+        // Posterizar cada canal
+        out[i]     = Math.round(Math.round(data[i] / step) * step);
+        out[i + 1] = Math.round(Math.round(data[i + 1] / step) * step);
+        out[i + 2] = Math.round(Math.round(data[i + 2] / step) * step);
+        out[i + 3] = 255;
+    }
+    
+    outCtx.putImageData(outData, 0, 0);
+    ctx.clearRect(0, 0, dims.renderedWidth, dims.renderedHeight);
+    ctx.drawImage(outCanvas, 0, 0, processed.width, processed.height, 0, 0, dims.renderedWidth, dims.renderedHeight);
+}
+
+// Vincular posterización
+elements.filterPosterize.addEventListener('change', (e) => {
+    state.activeFilters.posterize = e.target.checked;
+    elements.posterizeControl.classList.toggle('hidden', !e.target.checked);
+    
+    if (state.activeFilters.posterize) {
+        // Ocultar la imagen original y mostrar la posterizada
+        elements.activeImage.style.opacity = '0';
+        applyPosterization();
+    } else {
+        elements.activeImage.style.opacity = '1';
+        const ctx = elements.posterizeCanvas.getContext('2d');
+        ctx.clearRect(0, 0, elements.posterizeCanvas.width, elements.posterizeCanvas.height);
+        elements.posterizeCanvas.style.display = 'none';
+    }
+});
+
+elements.posterizeLevel.addEventListener('input', (e) => {
+    state.posterizeLevel = parseInt(e.target.value, 10);
+    elements.posterizeLevelVal.textContent = state.posterizeLevel;
+    if (state.activeFilters.posterize) {
+        applyPosterization();
+    }
+});
+
+// --- 2.2: REVELADO PROGRESIVO (Progressive Reveal) ---
+const REVEAL_LABELS = {
+    1: 'Nivel 1 — Solo Silueta',
+    2: 'Nivel 2 — Masas de Valor',
+    3: 'Nivel 3 — Detalle Medio',
+    4: 'Nivel 4 — Imagen Completa'
+};
+
+function applyProgressiveReveal() {
+    if (!state.progressiveReveal) {
+        elements.activeImage.style.filter = '';
+        applyVisualFilters(); // Restaurar filtros normales
+        return;
+    }
+    
+    const step = state.revealStep;
+    let filterString = '';
+    
+    switch (step) {
+        case 1: // Solo silueta: muy borroso + alto contraste + escala de grises
+            filterString = 'blur(18px) contrast(300%) grayscale(100%) brightness(1.1)';
+            break;
+        case 2: // Masas de valor: borroso medio + contraste + desaturado
+            filterString = 'blur(8px) contrast(200%) grayscale(80%)';
+            break;
+        case 3: // Detalle medio: desenfoque leve + escala de grises parcial
+            filterString = 'blur(3px) contrast(130%) grayscale(40%)';
+            break;
+        case 4: // Imagen completa
+            filterString = 'none';
+            break;
+    }
+    
+    elements.activeImage.style.filter = filterString;
+}
+
+elements.progressiveRevealToggle.addEventListener('change', (e) => {
+    state.progressiveReveal = e.target.checked;
+    elements.revealControl.classList.toggle('hidden', !e.target.checked);
+    
+    if (state.progressiveReveal) {
+        // Desactivar otros filtros para no interferir
+        state.revealStep = 1;
+        elements.revealStepBtns.forEach(btn => {
+            btn.classList.toggle('active', parseInt(btn.dataset.step) === 1);
+        });
+        elements.revealLevelText.textContent = REVEAL_LABELS[1];
+        applyProgressiveReveal();
+    } else {
+        elements.activeImage.style.filter = '';
+        applyVisualFilters();
+    }
+});
+
+elements.revealStepBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        const step = parseInt(btn.dataset.step, 10);
+        state.revealStep = step;
+        
+        elements.revealStepBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        elements.revealLevelText.textContent = REVEAL_LABELS[step];
+        
+        applyProgressiveReveal();
+    });
+});
+
+// --- 2.3: LÍNEAS DE FLUJO (Flow Lines) ---
+function drawFlowLines() {
+    const canvas = elements.flowCanvas;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    
+    if (!state.flowLines) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        canvas.classList.remove('active');
+        return;
+    }
+    
+    const dims = getRenderedImageDimensions();
+    if (!dims) return;
+    
+    const processed = getProcessedImageData(400);
+    if (!processed) return;
+    
+    // Posicionar el canvas
+    canvas.width = dims.renderedWidth;
+    canvas.height = dims.renderedHeight;
+    canvas.style.left = dims.offsetX + 'px';
+    canvas.style.top = dims.offsetY + 'px';
+    canvas.style.width = dims.renderedWidth + 'px';
+    canvas.style.height = dims.renderedHeight + 'px';
+    canvas.classList.add('active');
+    
+    const { data, width, height } = processed;
+    
+    // Convertir a escala de grises
+    const gray = new Uint8Array(width * height);
+    for (let i = 0; i < data.length; i += 4) {
+        gray[i / 4] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+    }
+    
+    // Calcular gradientes con Sobel
+    const gradX = new Float32Array(width * height);
+    const gradY = new Float32Array(width * height);
+    
+    for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+            const idx = y * width + x;
+            gradX[idx] = -gray[(y-1)*width+(x-1)] + gray[(y-1)*width+(x+1)]
+                        - 2*gray[y*width+(x-1)] + 2*gray[y*width+(x+1)]
+                        - gray[(y+1)*width+(x-1)] + gray[(y+1)*width+(x+1)];
+            gradY[idx] = -gray[(y-1)*width+(x-1)] - 2*gray[(y-1)*width+x] - gray[(y-1)*width+(x+1)]
+                        + gray[(y+1)*width+(x-1)] + 2*gray[(y+1)*width+x] + gray[(y+1)*width+(x+1)];
+        }
+    }
+    
+    // Dibujar líneas de flujo siguiendo la dirección perpendicular al gradiente
+    ctx.clearRect(0, 0, dims.renderedWidth, dims.renderedHeight);
+    
+    const isLight = document.body.classList.contains('light-theme');
+    const scaleX = dims.renderedWidth / width;
+    const scaleY = dims.renderedHeight / height;
+    
+    // Muestreo espacial para las líneas
+    const gridStep = 12;
+    const lineLength = 30;
+    const steps = 15;
+    
+    for (let gy = gridStep; gy < height - gridStep; gy += gridStep) {
+        for (let gx = gridStep; gx < width - gridStep; gx += gridStep) {
+            const idx = gy * width + gx;
+            const mag = Math.hypot(gradX[idx], gradY[idx]);
+            
+            if (mag < 15) continue; // Ignorar zonas planas
+            
+            // Dirección perpendicular al gradiente (tangente al borde)
+            const angle = Math.atan2(gradY[idx], gradX[idx]) + Math.PI / 2;
+            
+            // Intensidad del trazo basada en la magnitud del gradiente
+            const intensity = Math.min(1, mag / 200);
+            
+            ctx.beginPath();
+            ctx.strokeStyle = isLight 
+                ? `rgba(99, 102, 241, ${0.15 + intensity * 0.5})`
+                : `rgba(168, 85, 247, ${0.15 + intensity * 0.5})`;
+            ctx.lineWidth = 1.5 + intensity * 1.5;
+            ctx.lineCap = 'round';
+            
+            // Trazar una línea corta siguiendo el flujo
+            let cx = gx, cy = gy;
+            ctx.moveTo(cx * scaleX, cy * scaleY);
+            
+            for (let s = 0; s < steps; s++) {
+                // Recalcular dirección en cada paso
+                const ix = Math.round(cx);
+                const iy = Math.round(cy);
+                if (ix < 1 || ix >= width - 1 || iy < 1 || iy >= height - 1) break;
+                
+                const pi = iy * width + ix;
+                const localAngle = Math.atan2(gradY[pi], gradX[pi]) + Math.PI / 2;
+                
+                cx += Math.cos(localAngle) * (lineLength / steps);
+                cy += Math.sin(localAngle) * (lineLength / steps);
+                
+                ctx.lineTo(cx * scaleX, cy * scaleY);
+            }
+            
+            ctx.stroke();
+        }
+    }
+}
+
+elements.flowLinesToggle.addEventListener('change', (e) => {
+    state.flowLines = e.target.checked;
+    
+    if (state.flowLines) {
+        drawFlowLines();
+    } else {
+        const ctx = elements.flowCanvas.getContext('2d');
+        ctx.clearRect(0, 0, elements.flowCanvas.width, elements.flowCanvas.height);
+        elements.flowCanvas.classList.remove('active');
+    }
+});
+
+// --- Actualizar filtros avanzados al cambiar de imagen ---
+const _originalShowImage = showImage;
+// Parchear showImage para actualizar nuevos filtros cuando cambia la imagen
+elements.activeImage.addEventListener('load', () => {
+    if (state.activeFilters.posterize) {
+        applyPosterization();
+    }
+    if (state.flowLines) {
+        drawFlowLines();
+    }
+    if (state.progressiveReveal) {
+        applyProgressiveReveal();
+    }
+});
+
+window.addEventListener('resize', () => {
+    if (state.activeFilters.posterize) {
+        applyPosterization();
+    }
+    if (state.flowLines) {
+        drawFlowLines();
+    }
+});
+
+
+// =====================================================
+// === FASE 4: MEJORAS DE UX ===
+// =====================================================
+
+// --- SIDEBAR RESPONSIVE ---
+function toggleSidebar() {
+    elements.sidebar.classList.toggle('open');
+    elements.sidebarBackdrop.classList.toggle('show');
+}
+
+if (elements.sidebarToggle) {
+    elements.sidebarToggle.addEventListener('click', toggleSidebar);
+}
+if (elements.sidebarBackdrop) {
+    elements.sidebarBackdrop.addEventListener('click', toggleSidebar);
+}
+
+// --- SECCIONES COLAPSABLES ---
+document.querySelectorAll('.section-title[data-section]').forEach(title => {
+    title.addEventListener('click', () => {
+        const section = title.closest('.control-section');
+        if (section) {
+            section.classList.toggle('section-collapsed');
+        }
+    });
+});
+
+// --- PANTALLA COMPLETA ---
+function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+            console.warn('Error al entrar en pantalla completa:', err);
+        });
+    } else {
+        document.exitFullscreen();
+    }
+}
+
+if (elements.fullscreenBtn) {
+    elements.fullscreenBtn.addEventListener('click', toggleFullscreen);
+}
+
+// --- ATAJOS DE TECLADO EXTENDIDOS ---
+// Extender el listener de keydown existente
+window.addEventListener('keydown', (e) => {
+    if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT') return;
+    
+    switch (e.code) {
+        case 'KeyF':
+            e.preventDefault();
+            toggleFullscreen();
+            break;
+        case 'Escape':
+            // Cerrar sidebar en móvil
+            if (elements.sidebar.classList.contains('open')) {
+                toggleSidebar();
+            }
+            break;
+        case 'Digit1':
+        case 'Digit2':
+        case 'Digit3':
+        case 'Digit4':
+            // Si revelado progresivo activo, cambiar paso con teclas 1-4
+            if (state.progressiveReveal) {
+                e.preventDefault();
+                const step = parseInt(e.code.replace('Digit', ''), 10);
+                state.revealStep = step;
+                elements.revealStepBtns.forEach(b => {
+                    b.classList.toggle('active', parseInt(b.dataset.step) === step);
+                });
+                elements.revealLevelText.textContent = REVEAL_LABELS[step];
+                applyProgressiveReveal();
+            }
+            break;
+    }
+});
+
+// --- DRAG & DROP ---
+const viewport = document.querySelector('.viewport');
+if (viewport) {
+    viewport.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        viewport.style.outline = '3px dashed var(--primary-glow)';
+        viewport.style.outlineOffset = '-10px';
+    });
+    
+    viewport.addEventListener('dragleave', (e) => {
+        viewport.style.outline = '';
+        viewport.style.outlineOffset = '';
+    });
+    
+    viewport.addEventListener('drop', (e) => {
+        e.preventDefault();
+        viewport.style.outline = '';
+        viewport.style.outlineOffset = '';
+        
+        const files = e.dataTransfer.files;
+        if (files && files.length > 0) {
+            initSession(files);
+            showToast(`${files.length} archivo(s) cargado(s)`, 'success');
+        }
+    });
+}
+
