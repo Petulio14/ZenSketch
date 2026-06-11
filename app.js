@@ -16,6 +16,9 @@ const state = {
     mirrorV: false,      // Volteo vertical
     soundEnabled: true,  // Sonido activado
     
+    // Tema
+    theme: 'dark',       // 'dark' o 'light'
+    
     // Gestión de memoria
     currentObjectURL: null
 };
@@ -63,7 +66,8 @@ const elements = {
     gridSelect: document.getElementById('grid-select'),
     mirrorHBtn: document.getElementById('mirror-h-btn'),
     mirrorVBtn: document.getElementById('mirror-v-btn'),
-    soundToggle: document.getElementById('sound-toggle')
+    soundToggle: document.getElementById('sound-toggle'),
+    themeToggle: document.getElementById('theme-toggle')
 };
 
 // --- AUDIO SINTETIZADO (Campana de Meditación) ---
@@ -508,7 +512,36 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
+// --- SISTEMA DE TEMA (Claro / Oscuro) ---
+function initTheme() {
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    state.theme = savedTheme;
+    if (savedTheme === 'light') {
+        document.body.classList.add('light-theme');
+    } else {
+        document.body.classList.remove('light-theme');
+    }
+}
+
+function toggleTheme() {
+    if (state.theme === 'dark') {
+        state.theme = 'light';
+        document.body.classList.add('light-theme');
+        localStorage.setItem('theme', 'light');
+    } else {
+        state.theme = 'dark';
+        document.body.classList.remove('light-theme');
+        localStorage.setItem('theme', 'dark');
+    }
+}
+
+// Vinculación de eventos de tema
+elements.themeToggle.addEventListener('click', toggleTheme);
+
 // Inicializar anillo del temporizador al cargar
 elements.timerRing.style.strokeDasharray = RING_CIRCUMFERENCE;
 elements.timerRing.style.strokeDashoffset = 0;
 updateTimerUI();
+
+// Inicializar tema
+initTheme();

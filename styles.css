@@ -1,7 +1,8 @@
 /* Variables del Sistema de Diseño */
 :root {
-    --bg-dark: #09090e;
+    --bg-app: #09090e;
     --bg-sidebar: rgba(15, 15, 23, 0.75);
+    --viewport-bg: #050508;
     --border-color: rgba(255, 255, 255, 0.07);
     --border-focus: rgba(99, 102, 241, 0.4);
     
@@ -21,8 +22,61 @@
     --glass-border: rgba(255, 255, 255, 0.05);
     --glass-shadow: rgba(0, 0, 0, 0.3);
     
+    --btn-bg: rgba(255, 255, 255, 0.03);
+    --btn-border: rgba(255, 255, 255, 0.05);
+    --btn-hover-bg: rgba(255, 255, 255, 0.08);
+    
+    --input-bg: rgba(0, 0, 0, 0.25);
+    --input-border: rgba(255, 255, 255, 0.05);
+    
+    --card-bg: rgba(255, 255, 255, 0.02);
+    --card-border: rgba(255, 255, 255, 0.03);
+    
+    --timer-bg-ring: rgba(255, 255, 255, 0.05);
     --font-outfit: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
+
+body.light-theme {
+    --bg-app: #f1f5f9;
+    --bg-sidebar: rgba(248, 250, 252, 0.85);
+    --viewport-bg: #e2e8f0;
+    --border-color: rgba(99, 102, 241, 0.12);
+    --border-focus: rgba(99, 102, 241, 0.6);
+    
+    --primary: #4f46e5;
+    --primary-glow: #6366f1;
+    --primary-hover: #4338ca;
+    
+    --accent: #9333ea;
+    --accent-glow: #a855f7;
+    
+    --text-main: #0f172a;
+    --text-muted: #475569;
+    --text-dimmed: #64748b;
+    
+    --glass-bg: rgba(255, 255, 255, 0.7);
+    --glass-bg-hover: rgba(255, 255, 255, 0.95);
+    --glass-border: rgba(99, 102, 241, 0.1);
+    --glass-shadow: rgba(99, 102, 241, 0.05);
+    
+    --btn-bg: rgba(99, 102, 241, 0.04);
+    --btn-border: rgba(99, 102, 241, 0.1);
+    --btn-hover-bg: rgba(99, 102, 241, 0.08);
+    
+    --input-bg: rgba(255, 255, 255, 0.9);
+    --input-border: rgba(99, 102, 241, 0.15);
+    
+    --card-bg: rgba(99, 102, 241, 0.02);
+    --card-border: rgba(99, 102, 241, 0.05);
+    
+    --timer-bg-ring: rgba(99, 102, 241, 0.08);
+}
+
+.timer-ring-bg {
+    stroke: var(--timer-bg-ring);
+    transition: stroke 0.3s ease;
+}
+
 
 /* Reset de Estilos */
 * {
@@ -35,12 +89,13 @@
 }
 
 body {
-    background-color: var(--bg-dark);
+    background-color: var(--bg-app);
     color: var(--text-main);
     font-family: var(--font-outfit);
     overflow: hidden;
     height: 100vh;
     width: 100vw;
+    transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* Contenedor Principal */
@@ -86,8 +141,15 @@ body {
 .logo-area {
     display: flex;
     align-items: center;
-    gap: 12px;
+    justify-content: space-between;
     margin-bottom: 8px;
+    width: 100%;
+}
+
+.logo-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }
 
 .logo-icon {
@@ -106,7 +168,7 @@ body {
     font-size: 1.25rem;
     font-weight: 700;
     letter-spacing: -0.5px;
-    background: linear-gradient(to right, #ffffff, var(--text-muted));
+    background: linear-gradient(to right, var(--text-main), var(--text-muted));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
 }
@@ -117,6 +179,47 @@ body {
     font-weight: 500;
     letter-spacing: 1px;
     text-transform: uppercase;
+}
+
+.theme-toggle-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: var(--btn-bg);
+    border: 1px solid var(--btn-border);
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.theme-toggle-btn:hover {
+    background: var(--btn-hover-bg);
+    color: var(--primary-glow);
+    transform: scale(1.05);
+}
+
+.theme-toggle-btn:active {
+    transform: scale(0.95);
+}
+
+.theme-toggle-btn svg {
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+body.light-theme .theme-toggle-btn .sun-icon {
+    display: none;
+}
+body.light-theme .theme-toggle-btn .moon-icon {
+    display: block;
+}
+body:not(.light-theme) .theme-toggle-btn .sun-icon {
+    display: block;
+}
+body:not(.light-theme) .theme-toggle-btn .moon-icon {
+    display: none;
 }
 
 /* Secciones del Sidebar */
@@ -204,8 +307,8 @@ body {
 }
 
 .stat-card {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.03);
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
     border-radius: 10px;
     padding: 8px 12px;
     display: flex;
@@ -227,7 +330,7 @@ body {
 
 .progress-bar-container {
     height: 6px;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--timer-bg-ring);
     border-radius: 3px;
     overflow: hidden;
     margin-bottom: 10px;
@@ -290,8 +393,8 @@ body {
 }
 
 .preset-btn {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--btn-bg);
+    border: 1px solid var(--btn-border);
     border-radius: 8px;
     color: var(--text-muted);
     font-family: var(--font-outfit);
@@ -303,9 +406,9 @@ body {
 }
 
 .preset-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--btn-hover-bg);
     color: var(--text-main);
-    border-color: rgba(255, 255, 255, 0.1);
+    border-color: var(--border-color);
 }
 
 .preset-btn.active {
@@ -323,8 +426,8 @@ body {
 }
 
 .input-group {
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
     border-radius: 8px;
     display: flex;
     align-items: center;
@@ -356,8 +459,8 @@ body {
 }
 
 .btn-secondary {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--btn-bg);
+    border: 1px solid var(--btn-border);
     border-radius: 8px;
     color: var(--text-main);
     font-family: var(--font-outfit);
@@ -369,8 +472,8 @@ body {
 }
 
 .btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.15);
+    background: var(--btn-hover-bg);
+    border-color: var(--border-color);
 }
 
 .btn-secondary:active {
@@ -390,8 +493,8 @@ body {
     width: 44px;
     height: 44px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--btn-bg);
+    border: 1px solid var(--btn-border);
     color: var(--text-muted);
     display: flex;
     align-items: center;
@@ -406,9 +509,9 @@ body {
 }
 
 .control-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--btn-hover-bg);
     color: var(--text-main);
-    border-color: rgba(255, 255, 255, 0.1);
+    border-color: var(--border-color);
     transform: scale(1.05);
 }
 
@@ -449,8 +552,8 @@ body {
 
 .action-btn {
     flex: 1;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--btn-bg);
+    border: 1px solid var(--btn-border);
     border-radius: 10px;
     padding: 8px 12px;
     color: var(--text-muted);
@@ -471,7 +574,7 @@ body {
 }
 
 .action-btn:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--btn-hover-bg);
     color: var(--text-main);
 }
 
@@ -481,7 +584,7 @@ body {
     align-items: center;
     justify-content: space-between;
     padding: 10px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid var(--border-color);
 }
 
 .option-row:last-child {
@@ -509,8 +612,8 @@ body {
 }
 
 .select-input {
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
     border-radius: 8px;
     color: var(--text-main);
     font-family: var(--font-outfit);
@@ -534,8 +637,8 @@ body {
 .toggle-btn {
     width: 32px;
     height: 30px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--btn-bg);
+    border: 1px solid var(--btn-border);
     border-radius: 6px;
     color: var(--text-muted);
     font-family: var(--font-outfit);
@@ -546,7 +649,7 @@ body {
 }
 
 .toggle-btn:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--btn-hover-bg);
     color: var(--text-main);
 }
 
@@ -578,8 +681,8 @@ body {
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background-color: var(--btn-hover-bg);
+    border: 1px solid var(--btn-border);
     transition: .3s cubic-bezier(0.4, 0, 0.2, 1);
     border-radius: 20px;
 }
@@ -612,7 +715,7 @@ body {
     flex: 1;
     height: 100%;
     position: relative;
-    background-color: #050508;
+    background-color: var(--viewport-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -633,13 +736,13 @@ body {
 }
 
 .landing-card {
-    background: rgba(18, 18, 26, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
     border-radius: 24px;
     padding: 40px;
     text-align: center;
     backdrop-filter: blur(15px);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 10px 30px var(--glass-shadow);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -730,7 +833,7 @@ body {
 .landing-shortcuts {
     margin-top: 36px;
     width: 100%;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-top: 1px solid var(--border-color);
     padding-top: 24px;
 }
 
@@ -752,8 +855,8 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    background: rgba(255, 255, 255, 0.01);
-    border: 1px solid rgba(255, 255, 255, 0.03);
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
     border-radius: 8px;
     padding: 8px;
 }
@@ -761,8 +864,8 @@ body {
 .shortcut-item span {
     font-size: 0.75rem;
     font-weight: 700;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--btn-hover-bg);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     padding: 2px 6px;
     color: var(--primary-glow);
