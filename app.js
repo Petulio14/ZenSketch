@@ -18,6 +18,18 @@ const state = {
     
     // Tema
     theme: 'dark',       // 'dark' o 'light'
+
+    // Deconstrucción y boceto
+    sketchMode: false,
+    brushColor: '#38bdf8',
+    brushSize: 4,
+    sketchOpacity: 0.8,
+    isEraser: false,
+    activeFilters: {
+        blur: false,
+        threshold: false,
+        grayscale: false
+    },
     
     // Gestión de memoria
     currentObjectURL: null
@@ -67,7 +79,21 @@ const elements = {
     mirrorHBtn: document.getElementById('mirror-h-btn'),
     mirrorVBtn: document.getElementById('mirror-v-btn'),
     soundToggle: document.getElementById('sound-toggle'),
-    themeToggle: document.getElementById('theme-toggle')
+    themeToggle: document.getElementById('theme-toggle'),
+
+    // Deconstrucción y boceto
+    sketchToggle: document.getElementById('sketch-toggle'),
+    brushControls: document.getElementById('brush-controls'),
+    brushSize: document.getElementById('brush-size'),
+    brushSizeVal: document.getElementById('brush-size-val'),
+    sketchOpacity: document.getElementById('sketch-opacity'),
+    sketchOpacityVal: document.getElementById('sketch-opacity-val'),
+    eraserBtn: document.getElementById('eraser-btn'),
+    clearSketchBtn: document.getElementById('clear-sketch-btn'),
+    filterBlur: document.getElementById('filter-blur'),
+    filterThreshold: document.getElementById('filter-threshold'),
+    filterGrayscale: document.getElementById('filter-grayscale'),
+    sketchCanvas: document.getElementById('sketch-canvas')
 };
 
 // --- AUDIO SINTETIZADO (Campana de Meditación) ---
@@ -366,6 +392,7 @@ function applyImageTransforms() {
     let scaleX = state.mirrorH ? -1 : 1;
     let scaleY = state.mirrorV ? -1 : 1;
     elements.activeImage.style.transform = `scale(${scaleX}, ${scaleY})`;
+    elements.sketchCanvas.style.transform = `scale(${scaleX}, ${scaleY})`;
 }
 
 function updateGridOverlay() {
@@ -545,3 +572,207 @@ updateTimerUI();
 
 // Inicializar tema
 initTheme();
+
+// --- LÓGICA DE DIBUJO Y FILTROS DE DECONSTRUCCIÓN ---
+
+let isDrawing = false;
+let lastX = 0;
+let lastY = 0;
+
+function startDrawing(e) {
+    if (!state.sketchMode) return;
+    isDrawing = true;
+    const coords = getEventCoords(e);
+    lastX = coords.x;
+    lastY = coords.y;
+}
+
+function draw(e) {
+    if (!isDrawing || !state.sketchMode) return;
+    
+    const canvas = elements.sketchCanvas;
+    const ctx = canvas.getContext('2d');
+    const coords = getEventCoords(e);
+    
+    ctx.beginPath();
+    ctx.moveTo(lastX, lastY);
+    ctx.lineTo(coords.x, coords.y);
+    
+    if (state.isEraser) {
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.lineWidth = state.brushSize * 2.5;
+    } else {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = state.brushColor;
+        ctx.lineWidth = state.brushSize;
+    }
+    
+    ctx.stroke();
+    
+    lastX = coords.x;
+    lastY = coords.y;
+}
+
+function stopDrawing() {
+    isDrawing = false;
+}
+
+function getEventCoords(e) {
+    const canvas = elements.sketchCanvas;
+    const rect = canvas.getBoundingClientRect();
+    
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    
+    let x = (clientX - rect.left) * (canvas.width / rect.width);
+    let y = (clientY - rect.top) * (canvas.height / rect.height);
+    
+    // Ajustar coordenadas si la imagen está espejada
+    if (state.mirrorH) {
+        x = canvas.width - x;
+    }
+    if (state.mirrorV) {
+        y = canvas.height - y;
+    }
+    
+    return { x, y };
+}
+
+function clearCanvas() {
+    const canvas = elements.sketchCanvas;
+    if (canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+}
+
+function resizeCanvas() {
+    const canvas = elements.sketchCanvas;
+    const img = elements.activeImage;
+    
+    if (!canvas || !img) return;
+    
+    const width = img.clientWidth;
+    const height = img.clientHeight;
+    
+    if (width === 0 || height === 0) return;
+    
+    // Guardar contenido temporal
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = canvas.width;
+    tempCanvas.height = canvas.height;
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.drawImage(canvas, 0, 0);
+    
+    canvas.width = width;
+    canvas.height = height;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.drawImage(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height, 0, 0, width, height);
+}
+
+function applyVisualFilters() {
+    let filterString = '';
+    
+    if (state.activeFilters.blur) {
+        filterString += 'blur(12px) ';
+    }
+    
+    if (state.activeFilters.threshold) {
+        filterString += 'grayscale(100%) contrast(400%) ';
+    } else if (state.activeFilters.grayscale) {
+        filterString += 'grayscale(100%) ';
+    }
+    
+    elements.activeImage.style.filter = filterString.trim() || 'none';
+}
+
+// --- VINCULACIÓN DE MANEJADORES DE DECONSTRUCCIÓN ---
+
+// Activar/desactivar dibujo
+elements.sketchToggle.addEventListener('change', (e) => {
+    state.sketchMode = e.target.checked;
+    elements.brushControls.classList.toggle('hidden', !state.sketchMode);
+    elements.sketchCanvas.classList.toggle('active', state.sketchMode);
+    if (state.sketchMode) {
+        resizeCanvas();
+    }
+});
+
+// Selección de color de pincel
+document.querySelectorAll('.color-dot').forEach(dot => {
+    dot.addEventListener('click', () => {
+        document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
+        dot.classList.add('active');
+        state.brushColor = dot.dataset.color;
+        
+        state.isEraser = false;
+        elements.eraserBtn.classList.remove('active');
+    });
+});
+
+// Grosor del pincel
+elements.brushSize.addEventListener('input', (e) => {
+    state.brushSize = parseInt(e.target.value, 10);
+    elements.brushSizeVal.textContent = `${state.brushSize}px`;
+});
+
+// Opacidad del lienzo
+elements.sketchOpacity.addEventListener('input', (e) => {
+    const opacityPct = parseInt(e.target.value, 10);
+    state.sketchOpacity = opacityPct / 100;
+    elements.sketchOpacityVal.textContent = `${opacityPct}%`;
+    elements.sketchCanvas.style.opacity = state.sketchOpacity;
+});
+
+// Alternar borrador
+elements.eraserBtn.addEventListener('click', () => {
+    state.isEraser = !state.isEraser;
+    elements.eraserBtn.classList.toggle('active', state.isEraser);
+});
+
+// Limpiar lienzo
+elements.clearSketchBtn.addEventListener('click', clearCanvas);
+
+// Filtros de abstracción
+elements.filterBlur.addEventListener('change', (e) => {
+    state.activeFilters.blur = e.target.checked;
+    applyVisualFilters();
+});
+
+elements.filterThreshold.addEventListener('change', (e) => {
+    state.activeFilters.threshold = e.target.checked;
+    applyVisualFilters();
+});
+
+elements.filterGrayscale.addEventListener('change', (e) => {
+    state.activeFilters.grayscale = e.target.checked;
+    applyVisualFilters();
+});
+
+// Eventos del Canvas
+elements.sketchCanvas.addEventListener('mousedown', startDrawing);
+elements.sketchCanvas.addEventListener('mousemove', draw);
+window.addEventListener('mouseup', stopDrawing);
+
+elements.sketchCanvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    startDrawing(e);
+}, { passive: false });
+
+elements.sketchCanvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    draw(e);
+}, { passive: false });
+
+window.addEventListener('touchend', stopDrawing);
+
+// Ajustar canvas en carga de imagen y redimensionar ventana
+elements.activeImage.addEventListener('load', () => {
+    clearCanvas();
+    resizeCanvas();
+});
+
+window.addEventListener('resize', resizeCanvas);
