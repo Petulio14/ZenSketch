@@ -36,6 +36,22 @@ const FRANJA_VERTICAL = [
     [255, 255, 255, 0, 0, 0, 255, 255]
 ];
 
+/**
+ * Ruido reproducible. Sin semilla fija, una prueba sobre un campo revuelto
+ * fallaría o pasaría según el día, que es peor que no tenerla.
+ */
+function ruido(n, semilla) {
+    const salida = new Float32Array(n);
+    let estado = semilla;
+
+    for (let i = 0; i < n; i++) {
+        estado = (estado * 1664525 + 1013904223) >>> 0;
+        salida[i] = (estado / 4294967296) * 600 - 300;
+    }
+
+    return salida;
+}
+
 describe('luminancia', () => {
     test('el gris puro se mantiene', () => {
         const { rgba } = desdeRejilla([[0, 128, 255]]);
@@ -281,5 +297,132 @@ describe('líneas de flujo', () => {
                 expect(y).toBeLessThan(alto + 2);
             }
         }
+    });
+
+    // Lo que sigue es lo que separa unas líneas que siguen la forma de una maraña
+    // de rayas cortas. La primera versión pasaba las pruebas de arriba y aun así
+    // llenaba la imagen de trazos que no seguían nada.
+
+    test('ningún trazo se dobla sobre sí mismo', () => {
+        // Con un campo revuelto, la tangente cambia mucho de un paso a otro. La
+        // tangente vale igual en los dos sentidos, y quedarse con el equivocado
+        // hacía que el trazo volviera por donde había venido: de ahí el aspecto
+        // de garabato.
+        const ancho = 90;
+        const alto = 90;
+        const gx = ruido(ancho * alto, 7);
+        const gy = ruido(ancho * alto, 91);
+
+        const trazos = trazosDeFlujo(gx, gy, ancho, alto);
+        expect(trazos.length).toBeGreaterThan(0);
+
+        for (const { puntos } of trazos) {
+            for (let i = 0; i + 2 < puntos.length; i++) {
+                const ax = puntos[i + 1][0] - puntos[i][0];
+                const ay = puntos[i + 1][1] - puntos[i][1];
+                const bx = puntos[i + 2][0] - puntos[i + 1][0];
+                const by = puntos[i + 2][1] - puntos[i + 1][1];
+
+                expect(ax * bx + ay * by).toBeGreaterThan(0);
+            }
+        }
+    });
+
+    test('el ruido de fondo no dibuja nada si hay un borde de verdad', () => {
+        // Un umbral fijo dejaba pasar cualquier textura floja. El de ahora se mide
+        // contra el borde más fuerte de la propia imagen.
+        const ancho = 60;
+        const alto = 60;
+        const gx = new Float32Array(ancho * alto).fill(20);   // textura de fondo
+        const gy = new Float32Array(ancho * alto);
+
+        for (let y = 0; y < alto; y++) {
+            for (let x = 22; x <= 26; x++) gx[y * ancho + x] = 400;   // el borde
+        }
+
+        const trazos = trazosDeFlujo(gx, gy, ancho, alto);
+        expect(trazos.length).toBeGreaterThan(0);
+
+        for (const { puntos } of trazos) {
+            for (const [x] of puntos) {
+                expect(x).toBeGreaterThan(20);
+                expect(x).toBeLessThan(28);
+            }
+        }
+    });
+
+    test('los trazos no se amontonan unos sobre otros', () => {
+        // Antes salía un trazo por cada punto de la rejilla, todos encima del
+        // mismo borde. Ahora el primero que pasa ocupa el sitio.
+        const ancho = 120;
+        const alto = 120;
+        const gx = new Float32Array(ancho * alto).fill(300);
+        const gy = new Float32Array(ancho * alto);
+
+        const separacion = 7.2;   // el valor por omisión: paso 12 x 0,6
+        const trazos = trazosDeFlujo(gx, gy, ancho, alto);
+        expect(trazos.length).toBeGreaterThan(0);
+
+        // Dos trazos no comparten ni un cuadro de la rejilla de ocupación: es lo
+        // que impide que se dibujen uno encima de otro sobre el mismo borde.
+        const dueno = new Map();
+
+        for (let i = 0; i < trazos.length; i++) {
+            for (const [x, y] of trazos[i].puntos) {
+                const celda = `${Math.floor(x / separacion)},${Math.floor(y / separacion)}`;
+                if (dueno.has(celda)) expect(dueno.get(celda)).toBe(i);
+                dueno.set(celda, i);
+            }
+        }
+    });
+
+    test('un contorno muy fuerte no apaga la estructura de dentro', () => {
+        // Con un umbral proporcional al borde más fuerte, el contorno de una
+        // figura recortada contra el fondo se llevaba todo el margen y los
+        // pliegues de dentro —lo que de verdad interesa dibujar— desaparecían.
+        const ancho = 120;
+        const alto = 120;
+        const gx = new Float32Array(ancho * alto).fill(10);   // fondo liso
+        const gy = new Float32Array(ancho * alto);
+
+        for (let y = 0; y < alto; y++) {
+            for (let x = 22; x <= 26; x++) gx[y * ancho + x] = 600;   // el contorno
+            for (let x = 58; x <= 86; x++) gx[y * ancho + x] = 60;    // los pliegues
+        }
+
+        const trazos = trazosDeFlujo(gx, gy, ancho, alto);
+        const dentroDe = (min, max) => trazos.some(
+            ({ puntos }) => puntos.every(([x]) => x > min && x < max)
+        );
+
+        expect(dentroDe(20, 28)).toBe(true);   // el contorno
+        expect(dentroDe(56, 88)).toBe(true);   // y también los pliegues
+    });
+
+    test('los trazos demasiado cortos se descartan', () => {
+        const ancho = 90;
+        const alto = 90;
+        const gx = ruido(ancho * alto, 3);
+        const gy = ruido(ancho * alto, 29);
+
+        for (const { puntos } of trazosDeFlujo(gx, gy, ancho, alto)) {
+            expect(puntos.length).toBeGreaterThanOrEqual(5);
+        }
+    });
+
+    test('un trazo puede crecer hacia los dos lados de su semilla', () => {
+        // Creciendo sólo hacia delante los trazos quedaban colgando del punto de
+        // partida en vez de recorrer el borde entero.
+        const ancho = 60;
+        const alto = 60;
+        const gx = new Float32Array(ancho * alto).fill(300);
+        const gy = new Float32Array(ancho * alto);
+
+        const [primero] = trazosDeFlujo(gx, gy, ancho, alto, { paso: 24 });
+        const alturas = primero.puntos.map(([, y]) => y);
+
+        // La semilla está en y=24; el trazo la deja por encima y por debajo.
+        expect(Math.min(...alturas)).toBeLessThan(24);
+        expect(Math.max(...alturas)).toBeGreaterThan(24);
     });
 });
