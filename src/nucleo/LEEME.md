@@ -42,6 +42,9 @@ Si añades un módulo nuevo, copia ese envoltorio y añade su `<script>` a
 | `capas.js` | Qué capa visual manda cuando varias compiten por la misma imagen |
 | `imagen.js` | Luminancia, Sobel, posterización y trazado de las líneas de flujo |
 | `trabajador-imagen.js` | El Web Worker que ejecuta `imagen.js` fuera del hilo de la interfaz |
+| `preferencias.js` | Lo que el usuario eligió, saneado antes de aplicarlo |
+| `historial.js` | Minutos, referencias y racha de días de práctica |
+| `rutinas.js` | Bloques encadenados de una sesión, y por dónde va |
 
 ## Reglas de la casa
 
@@ -77,6 +80,17 @@ los dos, porque el trabajador carga ese mismo archivo con `importScripts`.
 reducido, la luminancia, el Sobel y hasta las capas ya pintadas. Redimensionar la
 ventana no recalcula nada: sólo vuelve a dibujar lo guardado. Si añades un filtro,
 cuélgalo de esa caché en vez de volver a leer del lienzo.
+
+**Lo que viene de fuera se sanea al entrar.** `preferencias.normalizar()` acepta
+cualquier cosa —un almacenamiento manipulado, de una versión anterior o a medio
+escribir— y devuelve siempre un juego completo y válido. Si añades una preferencia,
+añádele su validación ahí: la aplicación no debe poder quedarse inservible porque
+alguien editó `localStorage`.
+
+**La racha sigue viva si se practicó ayer.** No es un descuido: quien dibuja por la
+mañana no debería ver su racha rota durante todo el día siguiente hasta que vuelva
+a sentarse. Los días se calculan en hora local y no en UTC, porque la racha es un
+hecho del calendario de quien dibuja.
 
 **Las capas se resuelven antes de dibujar.** Ningún manejador escribe sobre
 `style.filter` por su cuenta: `capas.resolver()` decide qué queda encendido y

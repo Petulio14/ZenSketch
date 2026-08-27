@@ -83,6 +83,12 @@ function showToast(message, type = 'info', duration = 3000) {
     if (!container) {
         container = document.createElement('div');
         container.id = 'toast-container';
+
+        // Sin esto, un lector de pantalla no dice nunca que una imagen falló ni
+        // que la rutina terminó: los avisos aparecían sólo para quien los ve.
+        container.setAttribute('role', 'status');
+        container.setAttribute('aria-live', 'polite');
+
         document.body.appendChild(container);
     }
     const toast = document.createElement('div');
@@ -186,6 +192,10 @@ const elements = {
 
     // Zoom
     avisoZoom: document.getElementById('aviso-zoom'),
+
+    // Atajos de teclado
+    capaAtajos: document.getElementById('capa-atajos'),
+    cerrarAtajos: document.getElementById('cerrar-atajos'),
 
     sidebarToggle: document.getElementById('sidebar-toggle'),
     sidebarBackdrop: document.getElementById('sidebar-backdrop'),
@@ -449,6 +459,8 @@ function startTimer() {
     elements.pauseIcon.classList.remove('hidden');
     elements.playBtn.classList.add('paused');
     elements.playBtn.title = "Pausar (Espacio)";
+    elements.playBtn.setAttribute('aria-label', 'Pausar');
+    elements.playBtn.setAttribute('aria-pressed', 'true');
     
     elements.timerRing.style.stroke = 'var(--primary-glow)';
 
@@ -493,6 +505,8 @@ function pauseTimer() {
     elements.pauseIcon.classList.add('hidden');
     elements.playBtn.classList.remove('paused');
     elements.playBtn.title = "Reproducir (Espacio)";
+    elements.playBtn.setAttribute('aria-label', 'Reproducir');
+    elements.playBtn.setAttribute('aria-pressed', 'false');
     
     updateTimerUI();
 }
@@ -554,6 +568,17 @@ function medidasDeImagen(img) {
         anchoNatural: img.naturalWidth,
         altoNatural: img.naturalHeight
     });
+}
+
+/**
+ * Un botón que conmuta tiene que decir en qué estado está, no sólo enseñarlo con
+ * un color: aria-pressed es lo que hace que «Voltear en horizontal» se anuncie
+ * como activado o desactivado.
+ */
+function marcarConmutador(boton, activo) {
+    if (!boton) return;
+    boton.classList.toggle('active', activo);
+    boton.setAttribute('aria-pressed', String(activo));
 }
 
 function applyImageTransforms() {
@@ -686,13 +711,13 @@ elements.gridSelect.addEventListener('change', (e) => {
 
 elements.mirrorHBtn.addEventListener('click', () => {
     state.mirrorH = !state.mirrorH;
-    elements.mirrorHBtn.classList.toggle('active', state.mirrorH);
+    marcarConmutador(elements.mirrorHBtn, state.mirrorH);
     applyImageTransforms();
 });
 
 elements.mirrorVBtn.addEventListener('click', () => {
     state.mirrorV = !state.mirrorV;
-    elements.mirrorVBtn.classList.toggle('active', state.mirrorV);
+    marcarConmutador(elements.mirrorVBtn, state.mirrorV);
     applyImageTransforms();
 });
 
@@ -725,14 +750,14 @@ window.addEventListener('keydown', (e) => {
         case 'KeyH':
             if (state.images.length > 0) {
                 state.mirrorH = !state.mirrorH;
-                elements.mirrorHBtn.classList.toggle('active', state.mirrorH);
+                marcarConmutador(elements.mirrorHBtn, state.mirrorH);
                 applyImageTransforms();
             }
             break;
         case 'KeyV':
             if (state.images.length > 0) {
                 state.mirrorV = !state.mirrorV;
-                elements.mirrorVBtn.classList.toggle('active', state.mirrorV);
+                marcarConmutador(elements.mirrorVBtn, state.mirrorV);
                 applyImageTransforms();
             }
             break;
@@ -747,9 +772,19 @@ window.addEventListener('keydown', (e) => {
             }
             break;
         case 'Escape':
-            // Cerrar el panel lateral en móvil
-            if (elements.sidebar.classList.contains('open')) {
+            // Lo de más arriba se cierra primero: primero los atajos, luego el panel
+            if (atajosVisibles()) {
+                ocultarAtajos();
+            } else if (elements.sidebar.classList.contains('open')) {
                 toggleSidebar();
+            }
+            break;
+        case 'Slash':
+        case 'IntlRo':
+            // La ? está en Shift + / en unos teclados y suelta en otros
+            if (e.shiftKey || e.key === '?') {
+                e.preventDefault();
+                alternarAtajos();
             }
             break;
         case 'Digit1':
@@ -1616,8 +1651,12 @@ elements.flowLinesToggle.addEventListener('change', (e) => {
 
 // --- SIDEBAR RESPONSIVE ---
 function toggleSidebar() {
-    elements.sidebar.classList.toggle('open');
-    elements.sidebarBackdrop.classList.toggle('show');
+    const abierto = elements.sidebar.classList.toggle('open');
+    elements.sidebarBackdrop.classList.toggle('show', abierto);
+
+    if (elements.sidebarToggle) {
+        elements.sidebarToggle.setAttribute('aria-expanded', String(abierto));
+    }
 }
 
 if (elements.sidebarToggle) {
@@ -1652,8 +1691,62 @@ if (elements.fullscreenBtn) {
     elements.fullscreenBtn.addEventListener('click', toggleFullscreen);
 }
 
+// El estado real lo manda el navegador, no el botón: se puede salir con Escape
+document.addEventListener('fullscreenchange', () => {
+    if (!elements.fullscreenBtn) return;
+    elements.fullscreenBtn.setAttribute('aria-pressed', String(!!document.fullscreenElement));
+});
+
 // Los atajos de pantalla completa, Escape y 1-4 están en el único manejador de
 // teclado de más arriba.
+
+// --- PANEL DE ATAJOS ---
+// Los atajos estaban sólo en la pantalla de bienvenida, y desaparecían justo
+// cuando empezaban a hacer falta. Con la tecla ? vuelven en cualquier momento.
+
+let focoAntesDeLosAtajos = null;
+
+function atajosVisibles() {
+    return elements.capaAtajos && !elements.capaAtajos.classList.contains('hidden');
+}
+
+function mostrarAtajos() {
+    if (!elements.capaAtajos) return;
+
+    focoAntesDeLosAtajos = document.activeElement;
+    elements.capaAtajos.classList.remove('hidden');
+
+    // El foco entra en el diálogo; si no, tabular seguiría recorriendo lo de detrás
+    if (elements.cerrarAtajos) elements.cerrarAtajos.focus();
+}
+
+function ocultarAtajos() {
+    if (!elements.capaAtajos) return;
+
+    elements.capaAtajos.classList.add('hidden');
+
+    // Y vuelve de donde salió, que es lo que espera quien navega con teclado
+    if (focoAntesDeLosAtajos && focoAntesDeLosAtajos.focus) {
+        focoAntesDeLosAtajos.focus();
+    }
+    focoAntesDeLosAtajos = null;
+}
+
+function alternarAtajos() {
+    if (atajosVisibles()) ocultarAtajos();
+    else mostrarAtajos();
+}
+
+if (elements.cerrarAtajos) {
+    elements.cerrarAtajos.addEventListener('click', ocultarAtajos);
+}
+
+if (elements.capaAtajos) {
+    // Pinchar fuera del panel también cierra
+    elements.capaAtajos.addEventListener('click', (e) => {
+        if (e.target === elements.capaAtajos) ocultarAtajos();
+    });
+}
 
 // --- ZOOM Y DESPLAZAMIENTO SOBRE LA IMAGEN ---
 // Estudiar un detalle sin salir de la sesión. La rueda amplía, arrastrar mueve y

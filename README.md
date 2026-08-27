@@ -16,7 +16,7 @@ Carga carpetas completas de referencias y practica de forma infinita con un temp
 
 ### 📂 Carga y Gestión de Imágenes
 - **Carga de carpetas completas** o archivos individuales
-- **Drag & Drop** — Arrastra imágenes directamente al viewport
+- **Drag & Drop** — Arrastra imágenes **o carpetas enteras**, con sus subcarpetas
 - **Formatos soportados**: JPG, PNG, WebP, GIF, BMP, AVIF, SVG, HEIC y HEIF
 - **TIFF no está soportado**: ningún navegador lo decodifica. Los archivos que el
   navegador no pueda abrir se avisan y se saltan, en vez de dejar la pantalla en blanco
@@ -53,6 +53,29 @@ Carga carpetas completas de referencias y practica de forma infinita con un temp
 
 ---
 
+## 🔁 Práctica sostenida
+
+- **Rutinas de sesión** — bloques encadenados que van de poses cortas a largas
+  (10×30 s, luego 5×2 min, luego 2×10 min). El temporizador cambia solo entre
+  bloques, sin tener que tocar nada justo cuando estabas concentrado
+- **Historial** — minutos dibujados, referencias y **racha de días seguidos**.
+  Guardado en tu equipo, en IndexedDB. La racha sigue viva si practicaste ayer
+- **Preferencias que se recuerdan** — duración, cuadrícula, sonido, filtros y
+  rutina vuelven tal como los dejaste
+- **Instalable y sin conexión** — se instala como aplicación y abre igual con red
+  que sin ella
+
+---
+
+## 🔍 Zoom y desplazamiento
+
+- **Rueda del ratón** para ampliar, hasta 6×
+- **Arrastrar** para moverte por la imagen ampliada
+- **Doble clic** o la **tecla 0** para volver al 100 %
+- Cada referencia nueva empieza entera
+
+---
+
 ## 🔬 Deconstrucción Visual
 
 Panel completo de abstracción en tiempo real para entender estructura, luz y volúmenes:
@@ -86,8 +109,11 @@ Panel completo de abstracción en tiempo real para entender estructura, luz y vo
 | `H` | Volteo espejo horizontal |
 | `V` | Volteo espejo vertical |
 | `F` | Pantalla completa |
-| `Esc` | Cerrar sidebar (en móvil) |
 | `1` `2` `3` `4` | Niveles de revelado progresivo (cuando está activo) |
+| `Rueda del ratón` | Ampliar la imagen, hasta 6× |
+| `0` | Volver al 100 % |
+| `?` | Mostrar u ocultar esta lista, sin salir de la sesión |
+| `Esc` | Cerrar los atajos o el panel lateral |
 
 ---
 
@@ -141,11 +167,22 @@ ZenSketch/
 │       ├── temporizador.js #   Cuenta atrás contra un instante objetivo
 │       ├── imagenes.js     #   Qué archivos valen como referencia
 │       ├── geometria.js    #   Rectángulo real de la imagen y resolución de proceso
-│       └── capas.js        #   Qué capa visual manda cuando varias compiten
+│       ├── capas.js        #   Qué capa visual manda cuando varias compiten
+│       ├── imagen.js       #   Sobel, posterización y líneas de flujo
+│       ├── preferencias.js #   Lo que elegiste, saneado antes de aplicarlo
+│       ├── historial.js    #   Minutos, referencias y racha de días
+│       ├── rutinas.js      #   Bloques encadenados de una sesión
+│       └── trabajador-imagen.js  # El Worker que ejecuta imagen.js
 ├── pruebas/nucleo/         # Las pruebas de todo lo anterior
 ├── assets/
 │   ├── heic2any.min.js     # Conversor HEIC (MIT), a demanda
 │   └── fuentes/            # Outfit en woff2 (OFL)
+├── herramientas/
+│   └── empaquetar.mjs      # Genera ZenSketch-desktop/www/ desde la raíz
+├── manifest.webmanifest    # Para instalarlo como aplicación
+├── servicio.js             # Service worker: funciona sin conexión
+├── LICENSE                 # MIT
+├── TERCEROS.md             # Atribución de los componentes de terceros
 ├── start.bat               # Lanzador rápido (abre en navegador)
 ├── serve.bat               # Lanzador con servidor local
 └── ZenSketch-desktop/      # Versión de escritorio (Neutralinojs)
@@ -172,6 +209,9 @@ ZenSketch/
 | **Outfit** | Tipografía, servida desde `assets/fuentes/` (licencia OFL) |
 | **heic2any** | Conversión de fotos de iPhone, servida desde `assets/` (licencia MIT) |
 | **Vitest + ESLint** | Pruebas del núcleo y análisis estático, sólo para desarrollar |
+| **Web Worker** | Sobel y posterización fuera del hilo de la interfaz |
+| **IndexedDB** | Historial de práctica, en tu equipo |
+| **Service Worker** | Instalable y utilizable sin conexión |
 
 ---
 
@@ -209,16 +249,47 @@ aparece una foto en HEIC.
 
 ---
 
+## ♿ Accesibilidad
+
+- Todos los controles tienen nombre accesible; los iconos decorativos están
+  marcados para que no se anuncien
+- Los botones que conmutan informan de su estado (`aria-pressed`), no sólo con color
+- El foco se ve al navegar con teclado, y la aplicación se opera entera sin ratón
+- Los avisos se anuncian en voz alta; el reloj **no**, para no leer cada segundo
+- Se respeta `prefers-reduced-motion`
+- El texto se puede seleccionar y copiar
+
+Pulsa <kbd>?</kbd> en cualquier momento para ver los atajos.
+
+---
+
 ## 🧪 Para desarrollar
 
 ```bash
 npm install
-npm run verificar     # linter + pruebas
+npm run verificar     # linter + pruebas + copia de escritorio al día
 npm run probar:ver    # pruebas en marcha mientras editas
+npm run empaquetar    # regenera ZenSketch-desktop/www/ desde la raíz
 ```
 
 La lógica que no toca el DOM vive en [`src/nucleo/`](src/nucleo/) y tiene pruebas
 propias en `pruebas/nucleo/`. Está explicado en [`src/nucleo/LEEME.md`](src/nucleo/LEEME.md).
+
+**No edites `ZenSketch-desktop/www/` a mano.** Es una copia generada por
+`npm run empaquetar`, que además inyecta el cliente de Neutralino y le abre el
+websocket local en la política de seguridad. `npm run verificar` falla si la copia
+se ha separado de la raíz, que es lo que impide que las dos versiones acaben
+comportándose distinto.
+
+---
+
+## 📄 Licencia
+
+ZenSketch se publica bajo la licencia [MIT](LICENSE).
+
+Incorpora trabajo de otras personas —la tipografía Outfit, los iconos de Lucide, el
+conversor heic2any y el framework Neutralinojs—, cada una con su propia licencia.
+Están recogidas en [`TERCEROS.md`](TERCEROS.md).
 
 ---
 

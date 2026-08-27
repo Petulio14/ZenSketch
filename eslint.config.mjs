@@ -69,6 +69,23 @@ export default [
         }
     },
 
+    // --- Herramientas de construcción: módulos ES sobre Node. ---
+    {
+        files: ['herramientas/**/*.mjs'],
+        languageOptions: {
+            ecmaVersion: 2022,
+            sourceType: 'module',
+            globals: { ...globals.node }
+        },
+        rules: {
+            ...js.configs.recommended.rules,
+            'no-unused-vars': 'error',
+            'no-var': 'error',
+            'prefer-const': 'error',
+            eqeqeq: ['error', 'always']
+        }
+    },
+
     // --- Pruebas: módulos ES sobre Node. ---
     {
         files: ['pruebas/**/*.js'],

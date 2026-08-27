@@ -1,0 +1,32 @@
+# Comprueba en cada envío lo mismo que se comprueba en local: que el linter pasa,
+# que las pruebas del núcleo están en verde y que la copia de escritorio no se ha
+# separado de la raíz.
+
+name: Verificar
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Traer el repositorio
+        uses: actions/checkout@v4
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # ci y no install: instala exactamente lo que fija package-lock.json, sin
+      # actualizar nada por su cuenta.
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Linter, pruebas y copia de escritorio
+        run: npm run verificar

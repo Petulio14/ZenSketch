@@ -6,8 +6,9 @@
   "scripts": {
     "probar": "vitest run",
     "probar:ver": "vitest",
-    "lint": "eslint src pruebas app.js servicio.js",
-    "verificar": "npm run lint && npm run probar"
+    "lint": "eslint src pruebas app.js servicio.js herramientas",
+    "empaquetar": "node herramientas/empaquetar.mjs",
+    "verificar": "npm run lint && npm run probar && npm run empaquetar -- --check"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -128,8 +128,19 @@ body.light-theme {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
-    user-select: none;
     -webkit-user-drag: none;
+}
+
+/* Los controles no se seleccionan al arrastrar sobre ellos, pero el texto sí:
+   antes no se podía copiar ni el nombre del archivo en pantalla. */
+button,
+label,
+.preset-btn,
+.reveal-step-btn,
+.section-title,
+.stat-label,
+.practica-etiqueta {
+    user-select: none;
 }
 
 body {
@@ -1625,4 +1636,156 @@ body.light-theme .toast {
 
 .aviso-zoom.visible {
     opacity: 1;
+}
+
+
+/* --- FOCO VISIBLE --- */
+/* Navegar con teclado era a ciegas: ningún control mostraba dónde estaba el foco.
+   Se usa :focus-visible para que el anillo aparezca al tabular y no al hacer clic.
+   Los selectores van uno por uno, y no un `:focus-visible` a secas, porque tres
+   controles —los campos del temporizador, el desplegable y los deslizadores— traen
+   `outline: none` con más especificidad y se quedaban sin ningún indicador. */
+:focus-visible,
+button:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible,
+.input-group input:focus-visible,
+.select-input:focus-visible,
+.range-input:focus-visible,
+.preset-btn:focus-visible,
+.reveal-step-btn:focus-visible,
+.toggle-btn:focus-visible,
+.control-btn:focus-visible,
+.action-btn:focus-visible {
+    outline: 2px solid var(--primary-glow);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+/* Los interruptores esconden su casilla: el anillo tiene que salir en el mando
+   que sí se ve, o tabular por ellos no muestra nada. */
+.switch input:focus-visible + .slider,
+.upload-btn:focus-within,
+.btn-primary:focus-within {
+    outline: 2px solid var(--primary-glow);
+    outline-offset: 2px;
+}
+
+/* --- MOVIMIENTO REDUCIDO --- */
+/* Quien pide en su sistema que se reduzca el movimiento suele tener un motivo
+   médico. Se conservan los cambios de color, que son los que informan. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* --- PANEL DE ATAJOS --- */
+.capa-atajos {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(6px);
+}
+
+.panel-atajos {
+    width: 100%;
+    max-width: 460px;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 24px 26px;
+    background: var(--bg-sidebar);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    box-shadow: 0 24px 60px var(--glass-shadow);
+    backdrop-filter: blur(20px);
+}
+
+.atajos-cabecera {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+.atajos-cabecera h2 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.cerrar-atajos {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: var(--btn-bg);
+    border: 1px solid var(--btn-border);
+    border-radius: 8px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.cerrar-atajos:hover {
+    background: var(--btn-hover-bg);
+    color: var(--text-main);
+}
+
+.lista-atajos {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.lista-atajos > div {
+    display: grid;
+    grid-template-columns: 8.5rem minmax(0, 1fr);
+    gap: 12px;
+    align-items: baseline;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--card-border);
+}
+
+.lista-atajos > div:last-child {
+    border-bottom: none;
+}
+
+.lista-atajos dd {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+
+.lista-atajos kbd {
+    display: inline-block;
+    min-width: 1.7rem;
+    padding: 3px 7px;
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    font-family: inherit;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-align: center;
+    color: var(--text-main);
+}
+
+@media (max-width: 480px) {
+    .lista-atajos > div {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 2px;
+    }
 }
