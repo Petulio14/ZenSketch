@@ -13,7 +13,9 @@ Carga carpetas completas de referencias y practica de forma infinita con un temp
 ### 📂 Carga y Gestión de Imágenes
 - **Carga de carpetas completas** o archivos individuales
 - **Drag & Drop** — Arrastra imágenes directamente al viewport
-- **Formatos soportados**: JPG, PNG, WebP, GIF, TIFF, BMP, HEIC, HEIF, AVIF, SVG
+- **Formatos soportados**: JPG, PNG, WebP, GIF, BMP, AVIF, SVG, HEIC y HEIF
+- **TIFF no está soportado**: ningún navegador lo decodifica. Los archivos que el
+  navegador no pueda abrir se avisan y se saltan, en vez de dejar la pantalla en blanco
 - **Conversión HEIC/HEIF** automática a JPEG para visualización
 
 ### 🔄 Playlist Inteligente

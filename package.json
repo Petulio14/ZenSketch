@@ -1,0 +1,18 @@
+{
+  "name": "zensketch",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Herramienta local de practica de dibujo analitico: temporizador, filtros de abstraccion y descomposicion visual.",
+  "scripts": {
+    "probar": "vitest run",
+    "probar:ver": "vitest",
+    "lint": "eslint src pruebas app.js",
+    "verificar": "npm run lint && npm run probar"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.9.1",
+    "globals": "^17.11.0",
+    "vitest": "^4.1.11"
+  }
+}

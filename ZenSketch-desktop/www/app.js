@@ -1,12 +1,15 @@
 // --- ESTADO GLOBAL DE LA APLICACIÓN ---
 const state = {
     images: [],          // Lista original de archivos de imagen
-    playlist: [],        // Índices en orden aleatorio (ej: [4, 1, 0, 3, 2])
-    currentIndex: -1,    // Índice actual en la 'playlist'
+    lista: null,         // Playlist de la sesión (src/nucleo/playlist.js)
+    generacion: 0,       // Sube en cada cambio de imagen; descarta cargas tardías
+    fallosSeguidos: 0,   // Imágenes rotas encadenadas, para no saltar sin fin
     
     // Temporizador
     duration: 60,        // Duración configurada en segundos (default 1m)
-    timeLeft: 60,        // Tiempo restante en segundos
+    timeLeft: 60,        // Tiempo restante en segundos, para la interfaz
+    finPose: null,       // Instante en que se acaba la pose (performance.now)
+    restanteMs: null,    // Lo que quedaba al pausar, para reanudar sin perder tiempo
     timerId: null,       // ID del intervalo activo
     isPlaying: false,    // Estado de reproducción del temporizador
     
@@ -19,25 +22,24 @@ const state = {
     // Tema
     theme: 'dark',       // 'dark' o 'light'
 
-    // Deconstrucción y boceto
-    activeFilters: {
-        blur: false,
-        threshold: false,
-        grayscale: false,
-        posterize: false
-    },
+    // Capas visuales que compiten por la imagen: filtros acumulables (blur,
+    // threshold, grayscale) y modos que la sustituyen (posterize, reveal).
+    // Quién manda lo decide src/nucleo/capas.js, no el orden de los manejadores.
+    capas: null,         // Se inicializa abajo con ZenSketch.capasApagadas()
     blurLevel: 12,
     posterizeLevel: 4,
-    imageToSketch: false,
-    
-    // Descomposición avanzada (Fase 2)
-    progressiveReveal: false,
     revealStep: 1,       // 1=Silueta, 2=Masas, 3=Detalle, 4=Completa
+
+    // Superposiciones, que sí conviven con todo lo anterior
+    imageToSketch: false,
     flowLines: false,
     
     // Gestión de memoria
-    currentObjectURL: null
+    currentObjectURL: null,
+    nombreActual: ''     // Nombre del archivo en pantalla, para los avisos
 };
+
+state.capas = ZenSketch.capasApagadas();
 
 // --- SISTEMA DE TOASTS ---
 function showToast(message, type = 'info', duration = 3000) {
@@ -191,34 +193,19 @@ function playTimerChime() {
     }
 }
 
-// --- LÓGICA DE MEZCLA Y SESIÓN (Shuffle) ---
-// Mezcla de Fisher-Yates para asegurar aleatoriedad perfecta
-function shuffleArray(array) {
-    const arr = [...array];
-    for (let i = arr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr;
-}
+// --- LÓGICA DE MEZCLA Y SESIÓN ---
+// El barajado, el recorrido de la tanda y el reconocimiento de formatos viven en
+// src/nucleo/ y tienen pruebas propias. Aquí sólo se orquesta la interfaz.
 
 function initSession(filesList) {
-    // Filtrar archivos de imagen válidos con la gama completa solicitada
-    const validExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'tiff', 'tif', 'bmp', 'heic', 'heif', 'avif', 'svg'];
-    state.images = Array.from(filesList).filter(file => {
-        const ext = file.name.split('.').pop().toLowerCase();
-        return validExtensions.includes(ext) || file.type.startsWith('image/');
-    });
+    state.images = ZenSketch.filtrarImagenes(filesList);
 
     if (state.images.length === 0) {
         showToast('No se encontraron imágenes válidas. Asegúrate de elegir archivos con extensiones correctas (.jpg, .png, .webp, .gif, .tiff, .bmp, .heic, .avif, etc.).', 'error', 5000);
         return;
     }
 
-    // Crear la playlist con índices aleatorios
-    const indices = Array.from({ length: state.images.length }, (_, i) => i);
-    state.playlist = shuffleArray(indices);
-    state.currentIndex = 0;
+    state.lista = ZenSketch.crearPlaylist(state.images.length);
     
     // Habilitar paneles de control en UI
     elements.landingScreen.classList.add('hidden');
@@ -227,47 +214,33 @@ function initSession(filesList) {
     elements.playbackPanel.classList.remove('disabled');
 
     // Cargar la primera imagen y arrancar
-    showImage(state.currentIndex);
+    showImage();
     resetTimer();
     startTimer();
 }
 
 function restartShuffle() {
-    if (state.images.length === 0) return;
-    
-    const indices = Array.from({ length: state.images.length }, (_, i) => i);
-    state.playlist = shuffleArray(indices);
-    state.currentIndex = 0;
-    
-    showImage(state.currentIndex);
+    if (!state.lista) return;
+
+    state.lista.rebarajar();
+
+    showImage();
     resetTimer();
     startTimer();
 }
 
 // --- NAVEGACIÓN Y CARGA DE IMÁGENES ---
-function showImage(index) {
-    if (state.playlist.length === 0) return;
-    
-    // Asegurar que el índice esté dentro del rango
-    if (index >= state.playlist.length) {
-        // Si llegamos al final, volvemos a barajar para una sesión infinita sin repetición inmediata
-        const currentImageIndex = state.playlist[state.currentIndex];
-        let newIndices;
-        do {
-            newIndices = shuffleArray(Array.from({ length: state.images.length }, (_, i) => i));
-        } while (newIndices[0] === currentImageIndex && state.images.length > 1); // Evitar que la primera de la nueva tanda sea igual a la última
-        
-        state.playlist = newIndices;
-        state.currentIndex = 0;
-        index = 0;
-    } else if (index < 0) {
-        // En caso de ir hacia atrás del inicio, ir al final
-        state.currentIndex = state.playlist.length - 1;
-        index = state.playlist.length - 1;
-    }
+function showImage() {
+    if (!state.lista || state.lista.total() === 0) return;
 
-    const fileIndex = state.playlist[index];
+    const fileIndex = state.lista.imagenActual();
     const imageFile = state.images[fileIndex];
+
+    // Testigo de esta carga: si el usuario pasa de imagen mientras una conversión
+    // sigue en marcha, al resolver comprobará que ya no le toca y se apartará.
+    state.generacion++;
+    const generacion = state.generacion;
+    state.nombreActual = imageFile.name;
 
     // Liberar memoria del ObjectURL anterior
     if (state.currentObjectURL) {
@@ -275,20 +248,18 @@ function showImage(index) {
         state.currentObjectURL = null;
     }
 
-    const ext = imageFile.name.split('.').pop().toLowerCase();
-
     // Actualizar datos del índice en el panel de forma inmediata
-    elements.currentIndexVal.textContent = `${index + 1} / ${state.playlist.length}`;
-    const percent = Math.round(((index + 1) / state.playlist.length) * 100);
+    elements.currentIndexVal.textContent = `${state.lista.posicionActual()} / ${state.lista.total()}`;
+    const percent = state.lista.porcentaje();
     elements.percentVal.textContent = `${percent}%`;
     elements.sessionProgressBar.style.width = `${percent}%`;
 
     // Procesar HEIC/HEIF si corresponde
-    if (ext === 'heic' || ext === 'heif') {
+    if (ZenSketch.necesitaConversionHeic(imageFile.name)) {
         if (typeof heic2any !== 'undefined') {
             elements.fileInfoText.textContent = "Convirtiendo HEIC...";
             elements.activeImage.style.opacity = '0.5'; // Atenuar mientras convierte
-            
+
             heic2any({
                 blob: imageFile,
                 toType: "image/jpeg",
@@ -296,20 +267,26 @@ function showImage(index) {
             })
             .then(conversionResult => {
                 const blob = Array.isArray(conversionResult) ? conversionResult[0] : conversionResult;
+
+                // El usuario ya pasó a otra imagen: esta conversión llega tarde y
+                // pisaría lo que hay en pantalla, así que se descarta entera.
+                if (generacion !== state.generacion) return;
+
                 state.currentObjectURL = URL.createObjectURL(blob);
                 elements.activeImage.src = state.currentObjectURL;
                 elements.fileInfoText.textContent = imageFile.name;
                 elements.activeImage.style.opacity = '1';
             })
             .catch(err => {
+                if (generacion !== state.generacion) return;
+
                 console.error("Error al convertir HEIC:", err);
-                elements.fileInfoText.textContent = "Error al convertir: " + imageFile.name;
-                elements.activeImage.src = "";
                 elements.activeImage.style.opacity = '1';
+                saltarImagenRota(imageFile.name, 'no se pudo convertir');
             });
         } else {
-            elements.fileInfoText.textContent = "HEIC no soportado localmente (Offline)";
-            elements.activeImage.src = "";
+            elements.fileInfoText.textContent = "HEIC no soportado sin conexión";
+            elements.activeImage.removeAttribute('src');
         }
     } else {
         // Carga estándar
@@ -328,42 +305,65 @@ function showImage(index) {
     elements.activeImage.classList.add('image-entering');
 }
 
+/**
+ * Una imagen que el navegador no puede dibujar no debe dejar la sesión en blanco
+ * sin explicación: se avisa y se pasa a la siguiente. Si fallan todas seguidas se
+ * para, en vez de recorrer la lista para siempre.
+ */
+function saltarImagenRota(nombre, motivo) {
+    state.fallosSeguidos++;
+
+    if (state.fallosSeguidos >= state.images.length) {
+        pauseTimer();
+        elements.fileInfoText.textContent = 'Ninguna imagen se pudo abrir';
+        showToast('Ninguna de las imágenes cargadas se pudo abrir. Prueba con otra carpeta.', 'error', 6000);
+        return;
+    }
+
+    showToast(`No se pudo abrir «${nombre}»: ${motivo}. Pasando a la siguiente.`, 'warning', 4000);
+    nextImage();
+}
+
 function nextImage() {
-    state.currentIndex++;
-    showImage(state.currentIndex);
+    if (!state.lista) return;
+    state.lista.avanzar();
+    showImage();
     resetTimer();
 }
 
 function prevImage() {
-    state.currentIndex--;
-    showImage(state.currentIndex);
+    if (!state.lista) return;
+    state.lista.retroceder();
+    showImage();
     resetTimer();
 }
 
 // --- SISTEMA DEL TEMPORIZADOR ---
 function updateTimerUI() {
-    // Texto MM:SS
-    const mins = Math.floor(state.timeLeft / 60).toString().padStart(2, '0');
-    const secs = (state.timeLeft % 60).toString().padStart(2, '0');
-    elements.timerText.textContent = `${mins}:${secs}`;
-    
+    elements.timerText.textContent = ZenSketch.formatearTiempo(state.timeLeft);
+
     // Progreso del anillo circular (SVG stroke-dashoffset)
-    const ratio = state.timeLeft / state.duration;
-    const offset = RING_CIRCUMFERENCE * (1 - ratio);
-    elements.timerRing.style.strokeDashoffset = offset;
-    
+    const fraccion = ZenSketch.fraccionRestante(state.timeLeft, state.duration);
+    elements.timerRing.style.strokeDashoffset = ZenSketch.desplazamientoAnillo(RING_CIRCUMFERENCE, fraccion);
+
     // Cambio dinámico de color del anillo a medida que se acaba el tiempo
-    if (ratio <= 0.15) {
-        elements.timerRing.style.stroke = '#f87171'; // Rojo suave de advertencia
-    } else if (!state.isPlaying) {
-        elements.timerRing.style.stroke = '#fbbf24'; // Amarillo ámbar cuando está en pausa
-    } else {
-        elements.timerRing.style.stroke = 'var(--primary-glow)'; // Color normal
+    switch (ZenSketch.estadoAnillo(state.timeLeft, state.duration, state.isPlaying)) {
+        case 'advertencia':
+            elements.timerRing.style.stroke = '#f87171'; // Rojo suave de advertencia
+            break;
+        case 'pausa':
+            elements.timerRing.style.stroke = '#fbbf24'; // Amarillo ámbar cuando está en pausa
+            break;
+        default:
+            elements.timerRing.style.stroke = 'var(--primary-glow)'; // Color normal
     }
-    
+
     // Animación de advertencia cuando quedan menos de 5 segundos
     if (elements.timerSection) {
-        elements.timerSection.classList.toggle('timer-warning', state.timeLeft <= 5 && state.timeLeft > 0 && state.isPlaying);
+        elements.timerSection.classList.toggle(
+            'timer-warning',
+            ZenSketch.enAvisoFinal(state.timeLeft, state.isPlaying)
+        );
     }
 }
 
@@ -378,19 +378,29 @@ function startTimer() {
     
     elements.timerRing.style.stroke = 'var(--primary-glow)';
 
+    // Se fija el instante en que debe acabar la pose. Al reanudar de una pausa se
+    // parte de lo que quedaba, no de la duración completa.
+    const restante = state.restanteMs !== null ? state.restanteMs : state.duration * 1000;
+    state.finPose = performance.now() + restante;
+    state.restanteMs = null;
+
+    // El intervalo va más fino que un segundo: no lleva la cuenta, sólo pregunta
+    // cuánto falta, así que la campana no puede llegar tarde ni desfasarse.
     state.timerId = setInterval(() => {
-        if (state.timeLeft > 0) {
-            state.timeLeft--;
+        const ahora = performance.now();
+
+        if (ZenSketch.haTerminado(state.finPose, ahora)) {
+            state.timeLeft = 0;
             updateTimerUI();
-        } else {
-            // El tiempo llegó a cero
             playTimerChime();
             nextImage();
-            // nextImage() calls resetTimer() which resets timeLeft,
-            // then we just continue - timer is already running
+            return;
         }
-    }, 1000);
-    
+
+        state.timeLeft = ZenSketch.restanteEn(state.finPose, ahora);
+        updateTimerUI();
+    }, 200);
+
     updateTimerUI();
 }
 
@@ -399,7 +409,12 @@ function pauseTimer() {
     
     state.isPlaying = false;
     clearInterval(state.timerId);
-    
+
+    // Guardar lo que quedaba para que reanudar no regale ni robe tiempo
+    state.restanteMs = state.finPose !== null
+        ? ZenSketch.restanteMs(state.finPose, performance.now())
+        : null;
+
     elements.playIcon.classList.remove('hidden');
     elements.pauseIcon.classList.add('hidden');
     elements.playBtn.classList.remove('paused');
@@ -418,6 +433,8 @@ function togglePlayPause() {
 }
 
 function resetTimer() {
+    state.finPose = null;
+    state.restanteMs = null;
     state.timeLeft = state.duration;
     updateTimerUI();
     
@@ -430,6 +447,8 @@ function resetTimer() {
 
 function setTimerDuration(seconds) {
     state.duration = seconds;
+    state.finPose = null;
+    state.restanteMs = null;
     state.timeLeft = seconds;
     
     // Sincronizar UI de Inputs personalizados si corresponde
@@ -446,16 +465,41 @@ function setTimerDuration(seconds) {
 }
 
 // --- AYUDAS VISUALES Y FILTROS ---
+
+/**
+ * Rectángulo que ocupa realmente la imagen dentro de su contenedor. El cálculo
+ * de object-fit: contain vive en src/nucleo/geometria.js, donde está probado;
+ * hasta ahora estaba copiado en tres funciones de este archivo.
+ */
+function medidasDeImagen(img) {
+    if (!img || !img.complete) return null;
+
+    return ZenSketch.dimensionesRenderizadas({
+        anchoContenedor: img.clientWidth,
+        altoContenedor: img.clientHeight,
+        anchoNatural: img.naturalWidth,
+        altoNatural: img.naturalHeight
+    });
+}
+
 function applyImageTransforms() {
-    // Configuración espejo
-    let scaleX = state.mirrorH ? -1 : 1;
-    let scaleY = state.mirrorV ? -1 : 1;
-    elements.activeImage.style.transform = `scale(${scaleX}, ${scaleY})`;
-    if (elements.contourCanvas) {
-        elements.contourCanvas.style.transform = `scale(${scaleX}, ${scaleY})`;
-    }
-    if (elements.gridOverlay) {
-        elements.gridOverlay.style.transform = `scale(${scaleX}, ${scaleY})`;
+    // Configuración espejo. Se aplica a TODAS las capas que se dibujan encima de
+    // la imagen: si alguna se queda fuera, voltear con posterización o líneas de
+    // flujo activas dejaba el dibujo al revés respecto al fondo.
+    const scaleX = state.mirrorH ? -1 : 1;
+    const scaleY = state.mirrorV ? -1 : 1;
+    const transformacion = `scale(${scaleX}, ${scaleY})`;
+
+    const capas = [
+        elements.activeImage,
+        elements.contourCanvas,
+        elements.posterizeCanvas,
+        elements.flowCanvas,
+        elements.gridOverlay
+    ];
+
+    for (const capa of capas) {
+        if (capa) capa.style.transform = transformacion;
     }
 }
 
@@ -471,26 +515,13 @@ function updateGridOverlay() {
     elements.gridOverlay.classList.remove('hidden');
     
     // Ajustar tamaño y posición según la imagen activa renderizada (object-fit: contain)
-    const img = elements.activeImage;
-    if (img && img.complete && img.naturalWidth > 0) {
-        const containerWidth = img.clientWidth;
-        const containerHeight = img.clientHeight;
-        const naturalWidth = img.naturalWidth;
-        const naturalHeight = img.naturalHeight;
-        
-        if (containerWidth > 0 && containerHeight > 0) {
-            const scale = Math.min(containerWidth / naturalWidth, containerHeight / naturalHeight);
-            const renderedWidth = Math.round(naturalWidth * scale);
-            const renderedHeight = Math.round(naturalHeight * scale);
-            
-            const offsetX = Math.round((containerWidth - renderedWidth) / 2);
-            const offsetY = Math.round((containerHeight - renderedHeight) / 2);
-            
-            elements.gridOverlay.style.left = offsetX + 'px';
-            elements.gridOverlay.style.top = offsetY + 'px';
-            elements.gridOverlay.style.width = renderedWidth + 'px';
-            elements.gridOverlay.style.height = renderedHeight + 'px';
-        }
+    // Ajustar tamaño y posición a la imagen realmente visible
+    const medidas = medidasDeImagen(elements.activeImage);
+    if (medidas) {
+        elements.gridOverlay.style.left = medidas.x + 'px';
+        elements.gridOverlay.style.top = medidas.y + 'px';
+        elements.gridOverlay.style.width = medidas.ancho + 'px';
+        elements.gridOverlay.style.height = medidas.alto + 'px';
     }
     
     let gridClass = '';
@@ -554,11 +585,9 @@ elements.presetBtns.forEach(btn => {
 
 // Temporizador personalizado
 elements.applyCustomTime.addEventListener('click', () => {
-    const mins = parseInt(elements.customMin.value, 10) || 0;
-    const secs = parseInt(elements.customSec.value, 10) || 0;
-    const totalSeconds = (mins * 60) + secs;
-    
-    if (totalSeconds <= 0) {
+    const totalSeconds = ZenSketch.duracionDesdeCampos(elements.customMin.value, elements.customSec.value);
+
+    if (totalSeconds === null) {
         showToast('Introduce un tiempo mayor a 0 segundos.', 'warning');
         return;
     }
@@ -592,10 +621,13 @@ elements.soundToggle.addEventListener('change', (e) => {
 });
 
 // --- ATAJOS DE TECLADO ---
+// Uno solo para toda la aplicación: antes había dos manejadores registrados por
+// separado, con guardas distintas sobre qué campo tenía el foco (defecto D-09).
 window.addEventListener('keydown', (e) => {
-    // Si el usuario está escribiendo en los inputs del temporizador personalizado, no activar atajos
-    if (document.activeElement.tagName === 'INPUT') return;
-    
+    // No robar teclas mientras se escribe en el temporizador o se elige cuadrícula
+    const foco = document.activeElement;
+    if (foco && (foco.tagName === 'INPUT' || foco.tagName === 'SELECT')) return;
+
     switch (e.code) {
         case 'Space':
             e.preventDefault();
@@ -623,31 +655,44 @@ window.addEventListener('keydown', (e) => {
                 applyImageTransforms();
             }
             break;
+        case 'KeyF':
+            e.preventDefault();
+            toggleFullscreen();
+            break;
+        case 'Escape':
+            // Cerrar el panel lateral en móvil
+            if (elements.sidebar.classList.contains('open')) {
+                toggleSidebar();
+            }
+            break;
+        case 'Digit1':
+        case 'Digit2':
+        case 'Digit3':
+        case 'Digit4':
+            // Los peldaños del revelado progresivo, cuando está encendido
+            if (state.capas.reveal) {
+                e.preventDefault();
+                fijarPeldanoRevelado(parseInt(e.code.replace('Digit', ''), 10));
+            }
+            break;
     }
 });
 
 // --- SISTEMA DE TEMA (Claro / Oscuro) ---
+// El tema ya lo aplica el script en línea de index.html, antes del primer pintado,
+// para que no haya un destello del tema equivocado. Aquí sólo se lee de la clase
+// que ese script dejó puesta, en vez de volver a deducirlo de localStorage.
+
 function initTheme() {
-    const savedTheme = localStorage.getItem('theme') || 'dark';
-    state.theme = savedTheme;
-    if (savedTheme === 'light') {
-        document.body.classList.add('light-theme');
-    } else {
-        document.body.classList.remove('light-theme');
-    }
+    state.theme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
 }
 
 function toggleTheme() {
-    if (state.theme === 'dark') {
-        state.theme = 'light';
-        document.body.classList.add('light-theme');
-        localStorage.setItem('theme', 'light');
-    } else {
-        state.theme = 'dark';
-        document.body.classList.remove('light-theme');
-        localStorage.setItem('theme', 'dark');
-    }
-    
+    state.theme = state.theme === 'dark' ? 'light' : 'dark';
+
+    document.body.classList.toggle('light-theme', state.theme === 'light');
+    localStorage.setItem('theme', state.theme);
+
     // Redibujar contornos si están activos para adaptar colores de tiza/grafito
     if (state.imageToSketch) {
         updateImageContours();
@@ -665,55 +710,107 @@ updateTimerUI();
 // Inicializar tema
 initTheme();
 
-// --- FILTROS DE DECONSTRUCCIÓN ---
+// --- CAPAS VISUALES ---
+// Un único punto decide qué se ve y deja la interfaz diciendo la verdad. Antes
+// los filtros y el revelado progresivo escribían los dos sobre style.filter y
+// ganaba el último, con los interruptores encendidos sin efecto (defecto D-08).
 
-function applyVisualFilters() {
-    let filterString = '';
-    
-    if (state.activeFilters.blur) {
-        filterString += `blur(${state.blurLevel}px) `;
+// Qué interruptor y qué sub-panel corresponden a cada capa
+const CONTROLES_DE_CAPA = {
+    blur: { casilla: () => elements.filterBlur, panel: () => elements.blurLevelControl },
+    threshold: { casilla: () => elements.filterThreshold },
+    grayscale: { casilla: () => elements.filterGrayscale },
+    posterize: { casilla: () => elements.filterPosterize, panel: () => elements.posterizeControl },
+    reveal: { casilla: () => elements.progressiveRevealToggle, panel: () => elements.revealControl }
+};
+
+/** Vuelca state.capas sobre la pantalla: interruptores, filtros y lienzos. */
+function aplicarCapas() {
+    const capas = state.capas;
+
+    // 1. Los controles reflejan siempre lo que de verdad está actuando
+    for (const [nombre, control] of Object.entries(CONTROLES_DE_CAPA)) {
+        const casilla = control.casilla();
+        if (casilla) casilla.checked = capas[nombre];
+
+        const panel = control.panel && control.panel();
+        if (panel) panel.classList.toggle('hidden', !capas[nombre]);
     }
-    
-    if (state.activeFilters.threshold) {
-        filterString += 'grayscale(100%) contrast(400%) ';
-    } else if (state.activeFilters.grayscale) {
-        filterString += 'grayscale(100%) ';
+
+    // 2. Qué se dibuja sobre la imagen
+    elements.activeImage.style.filter = capas.reveal
+        ? ZenSketch.peldanoRevelado(state.revealStep).filtro
+        : ZenSketch.filtroCss(capas, state.blurLevel);
+
+    // 3. La posterización no filtra la imagen: la sustituye por su propio lienzo
+    elements.activeImage.style.opacity = capas.posterize ? '0' : '1';
+
+    if (capas.posterize) {
+        applyPosterization();
+    } else {
+        limpiarPosterizacion();
     }
-    
-    elements.activeImage.style.filter = filterString.trim() || 'none';
+}
+
+/** Enciende o apaga una capa, apagando lo que dejaría de tener efecto. */
+function cambiarCapa(nombre, activa) {
+    state.capas = ZenSketch.resolver(state.capas, nombre, activa);
+
+    // El revelado siempre empieza por la silueta
+    if (nombre === 'reveal' && activa) {
+        fijarPeldanoRevelado(1);
+        return;
+    }
+
+    aplicarCapas();
+}
+
+/** Coloca el revelado progresivo en uno de sus cuatro peldaños. */
+function fijarPeldanoRevelado(nivel) {
+    state.revealStep = nivel;
+
+    elements.revealStepBtns.forEach(boton => {
+        boton.classList.toggle('active', parseInt(boton.dataset.step, 10) === nivel);
+    });
+    elements.revealLevelText.textContent = ZenSketch.peldanoRevelado(nivel).etiqueta;
+
+    aplicarCapas();
 }
 
 // --- VINCULACIÓN DE MANEJADORES DE DECONSTRUCCIÓN ---
 
-// Filtros de abstracción
-elements.filterBlur.addEventListener('change', (e) => {
-    state.activeFilters.blur = e.target.checked;
-    elements.blurLevelControl.classList.toggle('hidden', !e.target.checked);
-    applyVisualFilters();
-});
+for (const nombre of ZenSketch.FILTROS.concat(ZenSketch.MODOS)) {
+    const casilla = CONTROLES_DE_CAPA[nombre].casilla();
+    if (casilla) {
+        casilla.addEventListener('change', (e) => cambiarCapa(nombre, e.target.checked));
+    }
+}
 
 elements.blurLevel.addEventListener('input', (e) => {
     state.blurLevel = parseInt(e.target.value, 10);
     elements.blurLevelVal.textContent = `${state.blurLevel}px`;
-    applyVisualFilters();
+    aplicarCapas();
 });
 
-elements.filterThreshold.addEventListener('change', (e) => {
-    state.activeFilters.threshold = e.target.checked;
-    applyVisualFilters();
-});
-
-elements.filterGrayscale.addEventListener('change', (e) => {
-    state.activeFilters.grayscale = e.target.checked;
-    applyVisualFilters();
-});
-
-// Ajustar contornos en carga de imagen y redimensionar ventana
+// Ajustar las superposiciones cuando la imagen termina de cargar
 elements.activeImage.addEventListener('load', () => {
+    state.fallosSeguidos = 0;   // esta sí se pudo abrir
+
+    updateGridOverlay();
+    aplicarCapas();
+
     if (state.imageToSketch) {
         updateImageContours();
     }
-    updateGridOverlay();
+    if (state.flowLines) {
+        drawFlowLines();
+    }
+});
+
+// Una imagen que el navegador no sabe dibujar deja de fallar en silencio
+elements.activeImage.addEventListener('error', () => {
+    if (!elements.activeImage.getAttribute('src')) return;   // limpieza intencionada
+    saltarImagenRota(state.nombreActual, 'el navegador no puede mostrar ese formato');
 });
 
 window.addEventListener('resize', () => {
@@ -739,27 +836,19 @@ function updateImageContours() {
         return;
     }
     
-    // Calcular las dimensiones reales de la imagen renderizada con object-fit: contain
-    const containerWidth = img.clientWidth;
-    const containerHeight = img.clientHeight;
+    const medidas = medidasDeImagen(img);
+    if (!medidas) return;
+
     const naturalWidth = img.naturalWidth;
     const naturalHeight = img.naturalHeight;
-    
-    if (containerWidth === 0 || containerHeight === 0) return;
-    
-    const scale = Math.min(containerWidth / naturalWidth, containerHeight / naturalHeight);
-    const renderedWidth = Math.round(naturalWidth * scale);
-    const renderedHeight = Math.round(naturalHeight * scale);
-    
-    // Calcular el offset para centrar el canvas sobre la imagen visible
-    const offsetX = Math.round((containerWidth - renderedWidth) / 2);
-    const offsetY = Math.round((containerHeight - renderedHeight) / 2);
-    
+    const renderedWidth = medidas.ancho;
+    const renderedHeight = medidas.alto;
+
     // Posicionar y dimensionar el canvas exactamente sobre la imagen renderizada
     canvas.width = renderedWidth;
     canvas.height = renderedHeight;
-    canvas.style.left = offsetX + 'px';
-    canvas.style.top = offsetY + 'px';
+    canvas.style.left = medidas.x + 'px';
+    canvas.style.top = medidas.y + 'px';
     canvas.style.width = renderedWidth + 'px';
     canvas.style.height = renderedHeight + 'px';
     
@@ -767,20 +856,10 @@ function updateImageContours() {
     const tempCanvas = document.createElement('canvas');
     const tempCtx = tempCanvas.getContext('2d');
     
-    const maxDimension = 800;
-    let procWidth = naturalWidth;
-    let procHeight = naturalHeight;
-    
-    if (procWidth > maxDimension || procHeight > maxDimension) {
-        if (procWidth > procHeight) {
-            procHeight = Math.round((procHeight * maxDimension) / procWidth);
-            procWidth = maxDimension;
-        } else {
-            procWidth = Math.round((procWidth * maxDimension) / procHeight);
-            procHeight = maxDimension;
-        }
-    }
-    
+    const proceso = ZenSketch.tamanoDeProceso(naturalWidth, naturalHeight, 800);
+    const procWidth = proceso.ancho;
+    const procHeight = proceso.alto;
+
     tempCanvas.width = procWidth;
     tempCanvas.height = procHeight;
     
@@ -924,22 +1003,18 @@ elements.imageToSketchToggle.addEventListener('change', (e) => {
 // --- UTILIDAD: Calcular dimensiones renderizadas de la imagen ---
 function getRenderedImageDimensions() {
     const img = elements.activeImage;
-    if (!img || !img.complete || img.naturalWidth === 0) return null;
-    
-    const containerWidth = img.clientWidth;
-    const containerHeight = img.clientHeight;
-    const naturalWidth = img.naturalWidth;
-    const naturalHeight = img.naturalHeight;
-    
-    if (containerWidth === 0 || containerHeight === 0) return null;
-    
-    const scale = Math.min(containerWidth / naturalWidth, containerHeight / naturalHeight);
-    const renderedWidth = Math.round(naturalWidth * scale);
-    const renderedHeight = Math.round(naturalHeight * scale);
-    const offsetX = Math.round((containerWidth - renderedWidth) / 2);
-    const offsetY = Math.round((containerHeight - renderedHeight) / 2);
-    
-    return { renderedWidth, renderedHeight, offsetX, offsetY, naturalWidth, naturalHeight, scale };
+    const medidas = medidasDeImagen(img);
+    if (!medidas) return null;
+
+    return {
+        renderedWidth: medidas.ancho,
+        renderedHeight: medidas.alto,
+        offsetX: medidas.x,
+        offsetY: medidas.y,
+        naturalWidth: img.naturalWidth,
+        naturalHeight: img.naturalHeight,
+        scale: medidas.escala
+    };
 }
 
 // --- UTILIDAD: Obtener datos de imagen procesados a resolución manejable ---
@@ -947,19 +1022,10 @@ function getProcessedImageData(maxDimension = 600) {
     const img = elements.activeImage;
     if (!img || !img.complete || img.naturalWidth === 0) return null;
     
-    let procWidth = img.naturalWidth;
-    let procHeight = img.naturalHeight;
-    
-    if (procWidth > maxDimension || procHeight > maxDimension) {
-        if (procWidth > procHeight) {
-            procHeight = Math.round((procHeight * maxDimension) / procWidth);
-            procWidth = maxDimension;
-        } else {
-            procWidth = Math.round((procWidth * maxDimension) / procHeight);
-            procHeight = maxDimension;
-        }
-    }
-    
+    const proceso = ZenSketch.tamanoDeProceso(img.naturalWidth, img.naturalHeight, maxDimension);
+    const procWidth = proceso.ancho;
+    const procHeight = proceso.alto;
+
     const tempCanvas = document.createElement('canvas');
     const tempCtx = tempCanvas.getContext('2d');
     tempCanvas.width = procWidth;
@@ -976,17 +1042,25 @@ function getProcessedImageData(maxDimension = 600) {
 }
 
 // --- 2.1: POSTERIZACIÓN INTELIGENTE ---
+/** Borra el lienzo de posterización y lo aparta. */
+function limpiarPosterizacion() {
+    const canvas = elements.posterizeCanvas;
+    if (!canvas) return;
+
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    canvas.style.display = 'none';
+}
+
 function applyPosterization() {
     const canvas = elements.posterizeCanvas;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    
-    if (!state.activeFilters.posterize) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        canvas.style.display = 'none';
+
+    if (!state.capas.posterize) {
+        limpiarPosterizacion();
         return;
     }
-    
+
     const dims = getRenderedImageDimensions();
     if (!dims) return;
     
@@ -1026,95 +1100,20 @@ function applyPosterization() {
     ctx.drawImage(outCanvas, 0, 0, processed.width, processed.height, 0, 0, dims.renderedWidth, dims.renderedHeight);
 }
 
-// Vincular posterización
-elements.filterPosterize.addEventListener('change', (e) => {
-    state.activeFilters.posterize = e.target.checked;
-    elements.posterizeControl.classList.toggle('hidden', !e.target.checked);
-    
-    if (state.activeFilters.posterize) {
-        // Ocultar la imagen original y mostrar la posterizada
-        elements.activeImage.style.opacity = '0';
-        applyPosterization();
-    } else {
-        elements.activeImage.style.opacity = '1';
-        const ctx = elements.posterizeCanvas.getContext('2d');
-        ctx.clearRect(0, 0, elements.posterizeCanvas.width, elements.posterizeCanvas.height);
-        elements.posterizeCanvas.style.display = 'none';
-    }
-});
-
 elements.posterizeLevel.addEventListener('input', (e) => {
     state.posterizeLevel = parseInt(e.target.value, 10);
     elements.posterizeLevelVal.textContent = state.posterizeLevel;
-    if (state.activeFilters.posterize) {
+    if (state.capas.posterize) {
         applyPosterization();
     }
 });
 
-// --- 2.2: REVELADO PROGRESIVO (Progressive Reveal) ---
-const REVEAL_LABELS = {
-    1: 'Nivel 1 — Solo Silueta',
-    2: 'Nivel 2 — Masas de Valor',
-    3: 'Nivel 3 — Detalle Medio',
-    4: 'Nivel 4 — Imagen Completa'
-};
+// --- 2.2: REVELADO PROGRESIVO ---
+// Los cuatro peldaños y su filtro viven en src/nucleo/capas.js.
 
-function applyProgressiveReveal() {
-    if (!state.progressiveReveal) {
-        elements.activeImage.style.filter = '';
-        applyVisualFilters(); // Restaurar filtros normales
-        return;
-    }
-    
-    const step = state.revealStep;
-    let filterString = '';
-    
-    switch (step) {
-        case 1: // Solo silueta: muy borroso + alto contraste + escala de grises
-            filterString = 'blur(18px) contrast(300%) grayscale(100%) brightness(1.1)';
-            break;
-        case 2: // Masas de valor: borroso medio + contraste + desaturado
-            filterString = 'blur(8px) contrast(200%) grayscale(80%)';
-            break;
-        case 3: // Detalle medio: desenfoque leve + escala de grises parcial
-            filterString = 'blur(3px) contrast(130%) grayscale(40%)';
-            break;
-        case 4: // Imagen completa
-            filterString = 'none';
-            break;
-    }
-    
-    elements.activeImage.style.filter = filterString;
-}
-
-elements.progressiveRevealToggle.addEventListener('change', (e) => {
-    state.progressiveReveal = e.target.checked;
-    elements.revealControl.classList.toggle('hidden', !e.target.checked);
-    
-    if (state.progressiveReveal) {
-        // Desactivar otros filtros para no interferir
-        state.revealStep = 1;
-        elements.revealStepBtns.forEach(btn => {
-            btn.classList.toggle('active', parseInt(btn.dataset.step) === 1);
-        });
-        elements.revealLevelText.textContent = REVEAL_LABELS[1];
-        applyProgressiveReveal();
-    } else {
-        elements.activeImage.style.filter = '';
-        applyVisualFilters();
-    }
-});
-
-elements.revealStepBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-        const step = parseInt(btn.dataset.step, 10);
-        state.revealStep = step;
-        
-        elements.revealStepBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        elements.revealLevelText.textContent = REVEAL_LABELS[step];
-        
-        applyProgressiveReveal();
+elements.revealStepBtns.forEach(boton => {
+    boton.addEventListener('click', () => {
+        fijarPeldanoRevelado(parseInt(boton.dataset.step, 10));
     });
 });
 
@@ -1187,9 +1186,6 @@ function drawFlowLines() {
             
             if (mag < 15) continue; // Ignorar zonas planas
             
-            // Dirección perpendicular al gradiente (tangente al borde)
-            const angle = Math.atan2(gradY[idx], gradX[idx]) + Math.PI / 2;
-            
             // Intensidad del trazo basada en la magnitud del gradiente
             const intensity = Math.min(1, mag / 200);
             
@@ -1236,23 +1232,11 @@ elements.flowLinesToggle.addEventListener('change', (e) => {
     }
 });
 
-// --- Actualizar filtros avanzados al cambiar de imagen ---
-const _originalShowImage = showImage;
-// Parchear showImage para actualizar nuevos filtros cuando cambia la imagen
-elements.activeImage.addEventListener('load', () => {
-    if (state.activeFilters.posterize) {
-        applyPosterization();
-    }
-    if (state.flowLines) {
-        drawFlowLines();
-    }
-    if (state.progressiveReveal) {
-        applyProgressiveReveal();
-    }
-});
+// El ajuste al cambiar de imagen lo hace ya el manejador de 'load' de más
+// arriba, que era el segundo registrado sobre el mismo elemento (defecto D-09).
 
 window.addEventListener('resize', () => {
-    if (state.activeFilters.posterize) {
+    if (state.capas.posterize) {
         applyPosterization();
     }
     if (state.flowLines) {
@@ -1303,59 +1287,27 @@ if (elements.fullscreenBtn) {
     elements.fullscreenBtn.addEventListener('click', toggleFullscreen);
 }
 
-// --- ATAJOS DE TECLADO EXTENDIDOS ---
-// Extender el listener de keydown existente
-window.addEventListener('keydown', (e) => {
-    if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT') return;
-    
-    switch (e.code) {
-        case 'KeyF':
-            e.preventDefault();
-            toggleFullscreen();
-            break;
-        case 'Escape':
-            // Cerrar sidebar en móvil
-            if (elements.sidebar.classList.contains('open')) {
-                toggleSidebar();
-            }
-            break;
-        case 'Digit1':
-        case 'Digit2':
-        case 'Digit3':
-        case 'Digit4':
-            // Si revelado progresivo activo, cambiar paso con teclas 1-4
-            if (state.progressiveReveal) {
-                e.preventDefault();
-                const step = parseInt(e.code.replace('Digit', ''), 10);
-                state.revealStep = step;
-                elements.revealStepBtns.forEach(b => {
-                    b.classList.toggle('active', parseInt(b.dataset.step) === step);
-                });
-                elements.revealLevelText.textContent = REVEAL_LABELS[step];
-                applyProgressiveReveal();
-            }
-            break;
-    }
-});
+// Los atajos de pantalla completa, Escape y 1-4 están en el único manejador de
+// teclado de más arriba.
 
 // --- DRAG & DROP ---
-const viewport = document.querySelector('.viewport');
-if (viewport) {
-    viewport.addEventListener('dragover', (e) => {
+const zonaSoltado = document.querySelector('.viewport');
+if (zonaSoltado) {
+    zonaSoltado.addEventListener('dragover', (e) => {
         e.preventDefault();
-        viewport.style.outline = '3px dashed var(--primary-glow)';
-        viewport.style.outlineOffset = '-10px';
+        zonaSoltado.style.outline = '3px dashed var(--primary-glow)';
+        zonaSoltado.style.outlineOffset = '-10px';
     });
     
-    viewport.addEventListener('dragleave', (e) => {
-        viewport.style.outline = '';
-        viewport.style.outlineOffset = '';
+    zonaSoltado.addEventListener('dragleave', () => {
+        zonaSoltado.style.outline = '';
+        zonaSoltado.style.outlineOffset = '';
     });
     
-    viewport.addEventListener('drop', (e) => {
+    zonaSoltado.addEventListener('drop', (e) => {
         e.preventDefault();
-        viewport.style.outline = '';
-        viewport.style.outlineOffset = '';
+        zonaSoltado.style.outline = '';
+        zonaSoltado.style.outlineOffset = '';
         
         const files = e.dataTransfer.files;
         if (files && files.length > 0) {
