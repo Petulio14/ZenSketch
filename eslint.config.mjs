@@ -37,8 +37,7 @@ export default [
             sourceType: 'script',
             globals: {
                 ...globals.browser,
-                // Cargados aparte por index.html
-                heic2any: 'readonly',
+                // Cargado aparte por index.html; heic2any llega a window en caliente
                 ZenSketch: 'readonly'
             }
         },

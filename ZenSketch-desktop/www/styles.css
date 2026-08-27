@@ -1,3 +1,48 @@
+/* --- Tipografía Outfit, incorporada al repositorio --- */
+/* Se sirve desde assets/fuentes/ y no desde Google Fonts: pedirla fuera entregaba
+   la IP y el navegador de quien dibuja a un tercero, y dejaba la aplicación sin su
+   tipografía en cuanto no había conexión. Licencia OFL en assets/fuentes/. */
+
+@font-face {
+    font-family: 'Outfit';
+    font-style: normal;
+    font-weight: 300;
+    font-display: swap;
+    src: url('assets/fuentes/outfit-latin-300-normal.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Outfit';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('assets/fuentes/outfit-latin-400-normal.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Outfit';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('assets/fuentes/outfit-latin-500-normal.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Outfit';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('assets/fuentes/outfit-latin-600-normal.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Outfit';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('assets/fuentes/outfit-latin-700-normal.woff2') format('woff2');
+}
+
 /* Variables del Sistema de Diseño */
 :root {
     --bg-app: #09090e;
@@ -336,6 +381,7 @@ body:not(.light-theme) .theme-toggle-btn .moon-icon {
 }
 
 .progress-bar {
+    width: 0;
     height: 100%;
     background: linear-gradient(to right, var(--primary), var(--accent));
     border-radius: 3px;
@@ -1363,6 +1409,12 @@ body.light-theme .toast {
     .shortcut-list {
         grid-template-columns: 1fr;
     }
+}
+
+/* Botones de pantalla completa y tema, en la cabecera del panel */
+.acciones-cabecera {
+    display: flex;
+    gap: 6px;
 }
 
 /* --- POSTERIZACIÓN / DECOMPOSICIÓN --- */

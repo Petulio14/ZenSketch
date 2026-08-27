@@ -41,6 +41,33 @@ const state = {
 
 state.capas = ZenSketch.capasApagadas();
 
+// --- CONVERSOR DE HEIC, A DEMANDA ---
+// Son 1,3 MB de libheif compilado: cargarlo al arrancar penalizaba cada sesión,
+// incluso las que no tienen una sola foto de iPhone. Se trae la primera vez que
+// hace falta y se reutiliza el resto de la sesión.
+
+let promesaConversorHeic = null;
+
+function cargarConversorHeic() {
+    if (promesaConversorHeic) return promesaConversorHeic;
+
+    promesaConversorHeic = new Promise((resolver, rechazar) => {
+        const script = document.createElement('script');
+        script.src = 'assets/heic2any.min.js';
+        script.onload = () => {
+            if (typeof window.heic2any === 'function') {
+                resolver(window.heic2any);
+            } else {
+                rechazar(new Error('el conversor se cargó pero no se registró'));
+            }
+        };
+        script.onerror = () => rechazar(new Error('no se encontró assets/heic2any.min.js'));
+        document.head.appendChild(script);
+    });
+
+    return promesaConversorHeic;
+}
+
 // --- SISTEMA DE TOASTS ---
 function showToast(message, type = 'info', duration = 3000) {
     let container = document.getElementById('toast-container');
@@ -51,7 +78,12 @@ function showToast(message, type = 'info', duration = 3000) {
     }
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
-    toast.innerHTML = `<span>${message}</span>`;
+
+    // textContent y no innerHTML: los avisos llevan nombres de archivo, que son
+    // texto que eligió otra persona y no marcado que deba interpretarse.
+    const texto = document.createElement('span');
+    texto.textContent = message;
+    toast.appendChild(texto);
     container.appendChild(toast);
     requestAnimationFrame(() => toast.classList.add('show'));
     setTimeout(() => {
@@ -256,15 +288,15 @@ function showImage() {
 
     // Procesar HEIC/HEIF si corresponde
     if (ZenSketch.necesitaConversionHeic(imageFile.name)) {
-        if (typeof heic2any !== 'undefined') {
-            elements.fileInfoText.textContent = "Convirtiendo HEIC...";
-            elements.activeImage.style.opacity = '0.5'; // Atenuar mientras convierte
+        elements.fileInfoText.textContent = "Convirtiendo HEIC...";
+        elements.activeImage.style.opacity = '0.5'; // Atenuar mientras convierte
 
-            heic2any({
+        cargarConversorHeic()
+            .then(convertir => convertir({
                 blob: imageFile,
                 toType: "image/jpeg",
                 quality: 0.8
-            })
+            }))
             .then(conversionResult => {
                 const blob = Array.isArray(conversionResult) ? conversionResult[0] : conversionResult;
 
@@ -284,10 +316,6 @@ function showImage() {
                 elements.activeImage.style.opacity = '1';
                 saltarImagenRota(imageFile.name, 'no se pudo convertir');
             });
-        } else {
-            elements.fileInfoText.textContent = "HEIC no soportado sin conexión";
-            elements.activeImage.removeAttribute('src');
-        }
     } else {
         // Carga estándar
         elements.activeImage.style.opacity = '1';

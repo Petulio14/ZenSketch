@@ -4,7 +4,11 @@
 
 Carga carpetas completas de referencias y practica de forma infinita con un temporizador inteligente, filtros de abstracción visual, cuadrículas adaptativas y herramientas avanzadas de descomposición de imagen.
 
-> **100% local y privado** — Todo se procesa en tu equipo. Sin servidores, sin cuentas, sin rastreo.
+> **100 % local y privado** — Todo se procesa en tu equipo. Sin servidores, sin cuentas,
+> sin rastreo. **Y se puede comprobar:** abre el panel de red del navegador y recarga;
+> no verás ni una petición fuera de `localhost`. La tipografía y el conversor de HEIC
+> viven en `assets/`, y una política de seguridad de contenido le prohíbe al navegador
+> pedir nada a un tercero aunque alguien lo intentara.
 
 ---
 
@@ -128,19 +132,31 @@ Requiere **WebView2** (viene preinstalado en Windows 10/11).
 ZenSketch/
 ├── index.html              # Estructura principal de la UI
 ├── styles.css              # Estilos, temas y animaciones
-├── app.js                  # Lógica completa de la aplicación
+├── app.js                  # Interfaz: eventos, canvas y pintado
+├── src/
+│   ├── tema-inicial.js     # Aplica el tema guardado antes del primer pintado
+│   └── nucleo/             # Lógica sin DOM, con pruebas propias
+│       ├── barajar.js      #   Fisher-Yates y la variante que evita repetir
+│       ├── playlist.js     #   Qué imagen toca y cuándo se rebaraja
+│       ├── temporizador.js #   Cuenta atrás contra un instante objetivo
+│       ├── imagenes.js     #   Qué archivos valen como referencia
+│       ├── geometria.js    #   Rectángulo real de la imagen y resolución de proceso
+│       └── capas.js        #   Qué capa visual manda cuando varias compiten
+├── pruebas/nucleo/         # Las pruebas de todo lo anterior
+├── assets/
+│   ├── heic2any.min.js     # Conversor HEIC (MIT), a demanda
+│   └── fuentes/            # Outfit en woff2 (OFL)
 ├── start.bat               # Lanzador rápido (abre en navegador)
 ├── serve.bat               # Lanzador con servidor local
-├── README.md               # Este archivo
 └── ZenSketch-desktop/      # Versión de escritorio (Neutralinojs)
     ├── neutralino.config.json
-    ├── www/                # Archivos web empaquetados
-    ├── bin/                # Binarios del framework
-    └── dist/               # Ejecutables compilados
-        └── ZenSketch-Windows/
-            ├── ZenSketch.exe
-            └── resources.neu
+    ├── www/                # Copia de los archivos web, empaquetada
+    ├── bin/                # Binarios del framework (no versionados)
+    └── dist/               # Ejecutables compilados (no versionados)
 ```
+
+> `bin/` y `dist/` no están en el repositorio. Tras clonar, la versión de escritorio
+> necesita `neu update` dentro de `ZenSketch-desktop/` antes de poder compilarse.
 
 ---
 
@@ -153,7 +169,9 @@ ZenSketch/
 | **HTML5 Canvas** | Procesamiento de píxeles: detección de bordes (Sobel), posterización, líneas de flujo |
 | **Web Audio API** | Síntesis de sonido: osciladores sinusoidales y triangulares para campana de meditación |
 | **Neutralinojs** | Empaquetado como aplicación de escritorio ligera (~1.7 MB) |
-| **Google Fonts (Outfit)** | Tipografía moderna y legible |
+| **Outfit** | Tipografía, servida desde `assets/fuentes/` (licencia OFL) |
+| **heic2any** | Conversión de fotos de iPhone, servida desde `assets/` (licencia MIT) |
+| **Vitest + ESLint** | Pruebas del núcleo y análisis estático, sólo para desarrollar |
 
 ---
 
@@ -161,7 +179,46 @@ ZenSketch/
 
 - **Navegador moderno**: Chrome, Edge, Firefox o Safari (versiones recientes)
 - **Para el .exe**: Windows 10/11 con WebView2 (preinstalado por defecto)
-- **Sin dependencias**: No requiere Node.js, npm ni instalación para la versión web
+- **Sin conexión**: no hace falta ninguna, ni la primera vez
+- **Para usarlo no hace falta nada más**: ni Node.js, ni npm, ni instalación
+
+---
+
+## 🔒 Qué sale de tu equipo
+
+Nada. Y no es una declaración de intenciones: `index.html` lleva una política de
+seguridad de contenido que el navegador impone.
+
+```
+default-src 'none'; script-src 'self' file: 'unsafe-eval'; style-src 'self' file:;
+font-src 'self' file:; img-src 'self' file: blob: data:; connect-src 'self' blob:;
+worker-src 'self' blob:; base-uri 'none'; form-action 'none'
+```
+
+El esquema `file:` está para que abrir `index.html` con doble clic siga funcionando:
+en ese caso `'self'` no siempre casa, según el navegador. No es una puerta a la red.
+
+Las imágenes no se suben a ningún sitio: se leen como `blob:` desde el disco y se
+procesan en el propio navegador. `connect-src 'self'` significa que la aplicación no
+puede abrir una conexión a ninguna parte, aunque alguien añadiera código para hacerlo.
+
+`'unsafe-eval'` está por un motivo concreto: el conversor de HEIC es libheif compilado
+con Emscripten, y construye funciones con `new Function`. No abre ninguna puerta a la
+red —de eso se ocupa `connect-src`— y el conversor ni siquiera se carga hasta que
+aparece una foto en HEIC.
+
+---
+
+## 🧪 Para desarrollar
+
+```bash
+npm install
+npm run verificar     # linter + pruebas
+npm run probar:ver    # pruebas en marcha mientras editas
+```
+
+La lógica que no toca el DOM vive en [`src/nucleo/`](src/nucleo/) y tiene pruebas
+propias en `pruebas/nucleo/`. Está explicado en [`src/nucleo/LEEME.md`](src/nucleo/LEEME.md).
 
 ---
 
