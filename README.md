@@ -1,5 +1,7 @@
 # 🎨 ZenSketch — Práctica de Dibujo Inteligente
 
+**Español** · **[English](README.en.md)**
+
 **ZenSketch** es una herramienta premium diseñada para artistas, ilustradores y estudiantes que desean mejorar sus habilidades de dibujo analítico, bocetado rápido y deconstrucción de formas en un entorno libre de distracciones.
 
 Carga carpetas completas de referencias y practica de forma infinita con un temporizador inteligente, filtros de abstracción visual, cuadrículas adaptativas y herramientas avanzadas de descomposición de imagen.
@@ -192,6 +194,10 @@ ZenSketch/
     └── dist/               # Ejecutables compilados (no versionados)
 ```
 
+> El código y la documentación están en español —nombres de archivo, funciones y
+> comentarios incluidos—. La traducción cubre el README; el código se queda en el
+> idioma en que se escribió.
+
 > `bin/` y `dist/` no están en el repositorio. Tras clonar, la versión de escritorio
 > necesita `neu update` dentro de `ZenSketch-desktop/` antes de poder compilarse.
 
@@ -232,7 +238,7 @@ seguridad de contenido que el navegador impone.
 ```
 default-src 'none'; script-src 'self' file: 'unsafe-eval'; style-src 'self' file:;
 font-src 'self' file:; img-src 'self' file: blob: data:; connect-src 'self' blob:;
-worker-src 'self' blob:; base-uri 'none'; form-action 'none'
+worker-src 'self' file: blob:; base-uri 'none'; form-action 'none'
 ```
 
 El esquema `file:` está para que abrir `index.html` con doble clic siga funcionando:
