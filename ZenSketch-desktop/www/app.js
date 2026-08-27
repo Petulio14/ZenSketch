@@ -34,6 +34,15 @@ const state = {
     imageToSketch: false,
     flowLines: false,
     
+    // Rutina de sesión en marcha, si hay alguna
+    rutina: null,
+    idRutina: '',
+
+    // Zoom y desplazamiento sobre la imagen
+    zoom: 1,
+    desplazamientoX: 0,
+    desplazamientoY: 0,
+
     // Gestión de memoria
     currentObjectURL: null,
     nombreActual: ''     // Nombre del archivo en pantalla, para los avisos
@@ -162,6 +171,22 @@ const elements = {
     flowCanvas: document.getElementById('flow-canvas'),
     
     // UI responsive
+    // Rutina de sesión
+    rutinaSelect: document.getElementById('rutina-select'),
+    rutinaEstado: document.getElementById('rutina-estado'),
+    rutinaBloque: document.getElementById('rutina-bloque'),
+    rutinaPose: document.getElementById('rutina-pose'),
+    rutinaBarra: document.getElementById('rutina-barra'),
+
+    // Práctica acumulada
+    practicaRacha: document.getElementById('practica-racha'),
+    practicaHoy: document.getElementById('practica-hoy'),
+    practicaTotal: document.getElementById('practica-total'),
+    practicaPie: document.getElementById('practica-pie'),
+
+    // Zoom
+    avisoZoom: document.getElementById('aviso-zoom'),
+
     sidebarToggle: document.getElementById('sidebar-toggle'),
     sidebarBackdrop: document.getElementById('sidebar-backdrop'),
     sidebar: document.querySelector('.sidebar'),
@@ -254,6 +279,14 @@ function initSession(filesList) {
 function restartShuffle() {
     if (!state.lista) return;
 
+    anotarPoseTerminada();
+
+    if (state.rutina) {
+        setTimerDuration(state.rutina.reiniciar());
+        marcarPresetActivo(state.duration);
+        pintarProgresoDeRutina();
+    }
+
     state.lista.rebarajar();
 
     showImage();
@@ -324,6 +357,12 @@ function showImage() {
         elements.fileInfoText.textContent = imageFile.name;
     }
     
+    // Cada referencia empieza entera: conservar el zoom de la anterior desorienta
+    state.zoom = 1;
+    state.desplazamientoX = 0;
+    state.desplazamientoY = 0;
+    elements.imageWrapper.classList.remove('ampliada');
+
     // Aplicar transformaciones visuales activas
     applyImageTransforms();
     
@@ -354,6 +393,10 @@ function saltarImagenRota(nombre, motivo) {
 
 function nextImage() {
     if (!state.lista) return;
+
+    anotarPoseTerminada();
+    if (!avanzarRutina()) return;   // la rutina se acabó: no se pasa de imagen
+
     state.lista.avanzar();
     showImage();
     resetTimer();
@@ -361,6 +404,9 @@ function nextImage() {
 
 function prevImage() {
     if (!state.lista) return;
+
+    anotarPoseTerminada();
+
     state.lista.retroceder();
     showImage();
     resetTimer();
@@ -511,12 +557,15 @@ function medidasDeImagen(img) {
 }
 
 function applyImageTransforms() {
-    // Configuración espejo. Se aplica a TODAS las capas que se dibujan encima de
-    // la imagen: si alguna se queda fuera, voltear con posterización o líneas de
-    // flujo activas dejaba el dibujo al revés respecto al fondo.
+    // Espejo y zoom en una sola transformación, aplicada a TODAS las capas que se
+    // dibujan encima de la imagen: si alguna se queda fuera, el dibujo acaba
+    // desencajado respecto al fondo. El orden importa —primero se desplaza, luego
+    // se amplía y por último se voltea— para que el espejo no invierta el arrastre.
     const scaleX = state.mirrorH ? -1 : 1;
     const scaleY = state.mirrorV ? -1 : 1;
-    const transformacion = `scale(${scaleX}, ${scaleY})`;
+    const transformacion =
+        `translate(${state.desplazamientoX}px, ${state.desplazamientoY}px) ` +
+        `scale(${state.zoom}) scale(${scaleX}, ${scaleY})`;
 
     const capas = [
         elements.activeImage,
@@ -608,6 +657,7 @@ elements.presetBtns.forEach(btn => {
         btn.classList.add('active');
         const seconds = parseInt(btn.dataset.time, 10);
         setTimerDuration(seconds);
+        guardarPreferencias();
     });
 });
 
@@ -622,14 +672,16 @@ elements.applyCustomTime.addEventListener('click', () => {
     
     // Quitar active de presets puesto que ahora es un tiempo custom
     elements.presetBtns.forEach(b => b.classList.remove('active'));
-    
+
     setTimerDuration(totalSeconds);
+    guardarPreferencias();
 });
 
 // Opciones adicionales (Cuadrícula, Espejo, Sonido)
 elements.gridSelect.addEventListener('change', (e) => {
     state.gridType = e.target.value;
     updateGridOverlay();
+    guardarPreferencias();
 });
 
 elements.mirrorHBtn.addEventListener('click', () => {
@@ -646,6 +698,7 @@ elements.mirrorVBtn.addEventListener('click', () => {
 
 elements.soundToggle.addEventListener('change', (e) => {
     state.soundEnabled = e.target.checked;
+    guardarPreferencias();
 });
 
 // --- ATAJOS DE TECLADO ---
@@ -687,6 +740,12 @@ window.addEventListener('keydown', (e) => {
             e.preventDefault();
             toggleFullscreen();
             break;
+        case 'Digit0':
+            if (state.images.length > 0) {
+                e.preventDefault();
+                reiniciarZoom();
+            }
+            break;
         case 'Escape':
             // Cerrar el panel lateral en móvil
             if (elements.sidebar.classList.contains('open')) {
@@ -705,6 +764,258 @@ window.addEventListener('keydown', (e) => {
             break;
     }
 });
+
+// --- HISTORIAL DE PRÁCTICA ---
+// Se guarda en IndexedDB y no en localStorage porque escribe en cada pose y no
+// debe competir por el hilo principal con el temporizador. Los cálculos —racha,
+// acumulados— viven en src/nucleo/historial.js y tienen pruebas propias.
+
+const BASE_HISTORIAL = 'zensketch';
+const ALMACEN_HISTORIAL = 'practica';
+const REGISTRO_UNICO = 'dias';
+
+let historialEnMemoria = {};
+let escrituraPendiente = null;
+
+function abrirBase() {
+    return new Promise((resolver, rechazar) => {
+        if (typeof indexedDB === 'undefined') {
+            rechazar(new Error('sin IndexedDB'));
+            return;
+        }
+
+        const peticion = indexedDB.open(BASE_HISTORIAL, 1);
+
+        peticion.onupgradeneeded = () => {
+            const base = peticion.result;
+            if (!base.objectStoreNames.contains(ALMACEN_HISTORIAL)) {
+                base.createObjectStore(ALMACEN_HISTORIAL);
+            }
+        };
+
+        peticion.onsuccess = () => resolver(peticion.result);
+        peticion.onerror = () => rechazar(peticion.error);
+    });
+}
+
+async function cargarHistorial() {
+    try {
+        const base = await abrirBase();
+        historialEnMemoria = await new Promise((resolver) => {
+            const peticion = base
+                .transaction(ALMACEN_HISTORIAL, 'readonly')
+                .objectStore(ALMACEN_HISTORIAL)
+                .get(REGISTRO_UNICO);
+
+            peticion.onsuccess = () => resolver(peticion.result || {});
+            peticion.onerror = () => resolver({});
+        });
+    } catch {
+        // Navegación privada o almacenamiento bloqueado: la sesión funciona igual,
+        // sólo que sin memoria de un día para otro.
+        historialEnMemoria = {};
+    }
+
+    pintarPractica();
+}
+
+/**
+ * Escribe el historial. Se agrupan las escrituras seguidas para no abrir una
+ * transacción por cada pose de treinta segundos.
+ */
+function guardarHistorial() {
+    clearTimeout(escrituraPendiente);
+
+    escrituraPendiente = setTimeout(async () => {
+        try {
+            const base = await abrirBase();
+            base.transaction(ALMACEN_HISTORIAL, 'readwrite')
+                .objectStore(ALMACEN_HISTORIAL)
+                .put(historialEnMemoria, REGISTRO_UNICO);
+        } catch {
+            // Sin dónde guardar: lo que hay en memoria sigue sirviendo esta sesión
+        }
+    }, 1000);
+}
+
+/**
+ * Anota el tiempo que se ha estado dibujando la pose que termina. Se llama justo
+ * antes de cambiar de imagen, contando lo que de verdad se estuvo delante y no la
+ * duración configurada: saltar a los cinco segundos anota cinco segundos.
+ */
+function anotarPoseTerminada() {
+    if (!state.lista) return;
+
+    const dibujados = Math.max(0, state.duration - state.timeLeft);
+    if (dibujados < 1) return;
+
+    historialEnMemoria = ZenSketch.registrarPose(historialEnMemoria, {
+        fecha: new Date(),
+        segundos: dibujados
+    });
+
+    guardarHistorial();
+    pintarPractica();
+}
+
+/** «1 día» y no «1 días»: el panel se lee muchas veces y el detalle se nota. */
+function plural(cantidad, uno, varios) {
+    return `${cantidad} ${cantidad === 1 ? uno : varios}`;
+}
+
+/** Vuelca el resumen al panel «Tu práctica». */
+function pintarPractica() {
+    if (!elements.practicaRacha) return;
+
+    const r = ZenSketch.resumen(historialEnMemoria, new Date());
+
+    elements.practicaRacha.textContent = r.rachaDias;
+    elements.practicaHoy.textContent = r.minutosHoy;
+    elements.practicaTotal.textContent = r.minutosTotales;
+
+    if (r.imagenesTotales === 0) {
+        elements.practicaPie.textContent = 'Aún no has dibujado nada aquí';
+        return;
+    }
+
+    const dias = plural(r.diasActivos, 'día', 'días');
+
+    elements.practicaPie.textContent = r.imagenesHoy > 0
+        ? `${plural(r.imagenesHoy, 'referencia', 'referencias')} hoy · ${r.imagenesTotales} en ${dias}`
+        : `${plural(r.imagenesTotales, 'referencia', 'referencias')} en ${dias}`;
+}
+
+// --- RUTINAS DE SESIÓN ---
+// Bloques encadenados que van de poses cortas a poses largas. El temporizador
+// cambia solo entre bloque y bloque, que es lo que antes había que hacer a mano
+// justo cuando uno estaba concentrado.
+
+function llenarSelectorDeRutinas() {
+    for (const rutina of ZenSketch.PREDEFINIDAS) {
+        const opcion = document.createElement('option');
+        const minutos = Math.round(ZenSketch.duracionTotal(rutina.bloques) / 60);
+
+        opcion.value = rutina.id;
+        opcion.textContent = `${rutina.nombre} · ${minutos} min`;
+        opcion.title = rutina.descripcion;
+
+        elements.rutinaSelect.appendChild(opcion);
+    }
+}
+
+function elegirRutina(id) {
+    const definicion = ZenSketch.porId(id);
+
+    if (!definicion) {
+        state.rutina = null;
+        state.idRutina = '';
+        elements.rutinaEstado.classList.add('hidden');
+        guardarPreferencias();
+        return;
+    }
+
+    state.rutina = ZenSketch.crearRutina(definicion.bloques);
+    state.idRutina = id;
+
+    elements.rutinaEstado.classList.remove('hidden');
+    setTimerDuration(state.rutina.duracionActual());
+    marcarPresetActivo(state.duration);
+    pintarProgresoDeRutina();
+    guardarPreferencias();
+}
+
+function pintarProgresoDeRutina() {
+    if (!state.rutina) return;
+
+    const p = state.rutina.progreso();
+
+    elements.rutinaBloque.textContent = p.terminada
+        ? 'Sesión terminada'
+        : `Bloque ${p.bloque} de ${p.totalBloques} · ${ZenSketch.formatearTiempo(p.duracion)}`;
+    elements.rutinaPose.textContent = `${p.pose} / ${p.totalPoses}`;
+    elements.rutinaBarra.style.width = `${Math.round((p.pose / p.totalPoses) * 100)}%`;
+}
+
+/**
+ * Hace avanzar la rutina una pose. Devuelve false si con eso se acabó, para que
+ * quien llama sepa que no hay que seguir pasando imágenes.
+ */
+function avanzarRutina() {
+    if (!state.rutina) return true;
+
+    const siguiente = state.rutina.avanzar();
+    pintarProgresoDeRutina();
+
+    if (siguiente === null) {
+        pauseTimer();
+        showToast('Rutina terminada. Buen trabajo.', 'success', 5000);
+        return false;
+    }
+
+    setTimerDuration(siguiente);
+    marcarPresetActivo(siguiente);
+    return true;
+}
+
+// --- PREFERENCIAS QUE SE RECUERDAN ---
+// Todo lo que el usuario elige se guarda al momento. Lo que no se guarda es el
+// estado de la sesión: al volver, los archivos de la carpeta ya no están.
+
+function preferenciasActuales() {
+    return {
+        duracion: state.duration,
+        cuadricula: state.gridType,
+        sonido: state.soundEnabled,
+        nivelDesenfoque: state.blurLevel,
+        nivelPosterizacion: state.posterizeLevel,
+        rutina: state.idRutina || null
+    };
+}
+
+function guardarPreferencias() {
+    ZenSketch.guardar(preferenciasActuales());
+}
+
+/** Aplica las preferencias guardadas a la interfaz, al arrancar. */
+function aplicarPreferencias() {
+    const guardadas = ZenSketch.leer();
+
+    setTimerDuration(guardadas.duracion);
+    marcarPresetActivo(guardadas.duracion);
+
+    state.gridType = guardadas.cuadricula;
+    elements.gridSelect.value = guardadas.cuadricula;
+    updateGridOverlay();
+
+    state.soundEnabled = guardadas.sonido;
+    elements.soundToggle.checked = guardadas.sonido;
+
+    state.blurLevel = guardadas.nivelDesenfoque;
+    elements.blurLevel.value = guardadas.nivelDesenfoque;
+    elements.blurLevelVal.textContent = `${guardadas.nivelDesenfoque}px`;
+
+    state.posterizeLevel = guardadas.nivelPosterizacion;
+    elements.posterizeLevel.value = guardadas.nivelPosterizacion;
+    elements.posterizeLevelVal.textContent = guardadas.nivelPosterizacion;
+
+    if (guardadas.rutina) {
+        elements.rutinaSelect.value = guardadas.rutina;
+        elegirRutina(guardadas.rutina);
+    }
+}
+
+/** Deja marcado el preset que coincide con la duración, si hay alguno. */
+function marcarPresetActivo(segundos) {
+    let alguno = false;
+
+    elements.presetBtns.forEach((boton) => {
+        const coincide = parseInt(boton.dataset.time, 10) === segundos;
+        boton.classList.toggle('active', coincide);
+        if (coincide) alguno = true;
+    });
+
+    return alguno;
+}
 
 // --- SISTEMA DE TEMA (Claro / Oscuro) ---
 // El tema ya lo aplica el script en línea de index.html, antes del primer pintado,
@@ -737,6 +1048,182 @@ updateTimerUI();
 
 // Inicializar tema
 initTheme();
+
+// --- ARRANQUE ---
+llenarSelectorDeRutinas();
+
+elements.rutinaSelect.addEventListener('change', (e) => elegirRutina(e.target.value));
+
+// Las preferencias se aplican después de tener los selectores llenos, para que una
+// rutina guardada pueda seleccionarse.
+aplicarPreferencias();
+
+// El historial llega cuando llegue: la sesión no espera por él.
+cargarHistorial();
+
+// --- APLICACIÓN INSTALABLE ---
+// Con el service worker, ZenSketch se instala y abre igual con red que sin ella.
+// No existe sobre file://, y ahí tampoco hace falta.
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('servicio.js').catch((error) => {
+            console.warn('No se pudo registrar el service worker:', error);
+        });
+    });
+}
+
+// --- DÓNDE SE CALCULA: TRABAJADOR O HILO PRINCIPAL ---
+// El trabajador quita de en medio el 84 % del coste de Sobel, pero no siempre está
+// disponible: abriendo index.html con doble clic (file://) el navegador no deja
+// crearlo. En ese caso se calcula aquí mismo, igual que antes, y lo único que se
+// pierde es el paralelismo. Nunca se pierde la función.
+
+const calculadora = (function () {
+    let trabajador = null;
+    let siguienteId = 1;
+    const pendientes = new Map();
+
+    try {
+        trabajador = new Worker('src/nucleo/trabajador-imagen.js');
+
+        trabajador.onmessage = (evento) => {
+            const { id, resultado, error } = evento.data;
+            const espera = pendientes.get(id);
+            if (!espera) return;
+
+            pendientes.delete(id);
+            if (error) espera.rechazar(new Error(error));
+            else espera.resolver(resultado);
+        };
+
+        trabajador.onerror = () => {
+            // Si el trabajador se cae, se sigue calculando en el hilo principal
+            console.warn('El trabajador de imagen falló; se calculará en el hilo principal.');
+            for (const espera of pendientes.values()) espera.rechazar(new Error('trabajador caído'));
+            pendientes.clear();
+            trabajador = null;
+        };
+    } catch {
+        trabajador = null;   // file:// y navegadores que no lo permiten
+    }
+
+    return {
+        disponible() {
+            return trabajador !== null;
+        },
+
+        /** Encarga una tarea. Los buffers de `transferibles` dejan de ser nuestros. */
+        encargar(tarea, datos, transferibles) {
+            if (!trabajador) return Promise.reject(new Error('sin trabajador'));
+
+            const id = siguienteId++;
+            return new Promise((resolver, rechazar) => {
+                pendientes.set(id, { resolver, rechazar });
+                trabajador.postMessage({ id, tarea, datos }, transferibles || []);
+            });
+        }
+    };
+})();
+
+// --- PÍXELES DE LA IMAGEN ACTUAL, UNA SOLA VEZ ---
+// Cada filtro volvía a dibujar la imagen en un lienzo temporal y a convertirla a
+// gris desde cero. Con el boceto y las líneas de flujo encendidos eso eran dos
+// decodificaciones y dos pasadas de Sobel por cada cambio de imagen, y otras tantas
+// cada vez que se movía el borde de la ventana. Ahora se calcula una vez por imagen
+// y se guarda; redimensionar sólo vuelve a dibujar.
+
+let cacheDePixeles = { generacion: -1, porTamano: new Map() };
+
+/**
+ * Datos de la imagen actual reducidos a un tamaño manejable. Devuelve siempre la
+ * misma entrada mientras no se cambie de imagen, para que la luminancia y el Sobel
+ * se puedan guardar dentro.
+ *
+ * @param {number} maxDimension lado mayor al que se reduce antes de procesar
+ * @returns {{rgba: Uint8ClampedArray, ancho: number, alto: number}|null}
+ */
+function pixelesProcesados(maxDimension) {
+    const img = elements.activeImage;
+    if (!img || !img.complete || img.naturalWidth === 0) return null;
+
+    if (cacheDePixeles.generacion !== state.generacion) {
+        cacheDePixeles = { generacion: state.generacion, porTamano: new Map() };
+    }
+
+    const guardado = cacheDePixeles.porTamano.get(maxDimension);
+    if (guardado) return guardado;
+
+    const proceso = ZenSketch.tamanoDeProceso(img.naturalWidth, img.naturalHeight, maxDimension);
+    const lienzo = document.createElement('canvas');
+    lienzo.width = proceso.ancho;
+    lienzo.height = proceso.alto;
+
+    let rgba;
+    try {
+        const contexto = lienzo.getContext('2d');
+        contexto.drawImage(img, 0, 0, proceso.ancho, proceso.alto);
+        rgba = contexto.getImageData(0, 0, proceso.ancho, proceso.alto).data;
+    } catch (error) {
+        console.warn('No se pudieron leer los píxeles de la imagen:', error);
+        return null;
+    }
+
+    const entrada = {
+        rgba,
+        ancho: proceso.ancho,
+        alto: proceso.alto,
+        gris: null,
+        bordes: null,
+        boceto: null,    // capas ya calculadas, con el tema con el que se hicieron
+        trazos: null     // polilíneas de las líneas de flujo
+    };
+    cacheDePixeles.porTamano.set(maxDimension, entrada);
+    return entrada;
+}
+
+/** Luminancia de esos píxeles, calculada la primera vez que se pide. */
+function luminanciaDe(pixeles) {
+    if (!pixeles.gris) {
+        pixeles.gris = ZenSketch.aLuminancia(pixeles.rgba);
+    }
+    return pixeles.gris;
+}
+
+/** Sobel de esos píxeles. Lo comparten el modo boceto y las líneas de flujo. */
+function bordesDe(pixeles) {
+    if (!pixeles.bordes) {
+        pixeles.bordes = ZenSketch.sobel(luminanciaDe(pixeles), pixeles.ancho, pixeles.alto);
+    }
+    return pixeles.bordes;
+}
+
+/** Coloca un lienzo justo encima de la imagen visible. */
+function colocarLienzo(canvas, medidas) {
+    canvas.width = medidas.ancho;
+    canvas.height = medidas.alto;
+    canvas.style.left = medidas.x + 'px';
+    canvas.style.top = medidas.y + 'px';
+    canvas.style.width = medidas.ancho + 'px';
+    canvas.style.height = medidas.alto + 'px';
+}
+
+/** Convierte un RGBA suelto en un lienzo que se pueda escalar al dibujarlo. */
+function lienzoDesdeRgba(rgba, ancho, alto) {
+    const lienzo = document.createElement('canvas');
+    lienzo.width = ancho;
+    lienzo.height = alto;
+    lienzo.getContext('2d').putImageData(new ImageData(rgba, ancho, alto), 0, 0);
+    return lienzo;
+}
+
+/** Colores de las dos tintas del boceto, según el tema. */
+function tintasDeBoceto() {
+    const claro = document.body.classList.contains('light-theme');
+    return {
+        construccion: claro ? { r: 56, g: 189, b: 248 } : { r: 244, g: 114, b: 182 },
+        grafito: claro ? { r: 51, g: 65, b: 85 } : { r: 226, g: 232, b: 240 }
+    };
+}
 
 // --- CAPAS VISUALES ---
 // Un único punto decide qué se ve y deja la interfaz diciendo la verdad. Antes
@@ -818,21 +1305,15 @@ elements.blurLevel.addEventListener('input', (e) => {
     state.blurLevel = parseInt(e.target.value, 10);
     elements.blurLevelVal.textContent = `${state.blurLevel}px`;
     aplicarCapas();
+    guardarPreferencias();
 });
 
 // Ajustar las superposiciones cuando la imagen termina de cargar
 elements.activeImage.addEventListener('load', () => {
     state.fallosSeguidos = 0;   // esta sí se pudo abrir
 
-    updateGridOverlay();
     aplicarCapas();
-
-    if (state.imageToSketch) {
-        updateImageContours();
-    }
-    if (state.flowLines) {
-        drawFlowLines();
-    }
+    ajustarCapasAlTamano();
 });
 
 // Una imagen que el navegador no sabe dibujar deja de fallar en silencio
@@ -841,171 +1322,117 @@ elements.activeImage.addEventListener('error', () => {
     saltarImagenRota(state.nombreActual, 'el navegador no puede mostrar ese formato');
 });
 
-window.addEventListener('resize', () => {
-    if (state.imageToSketch) {
-        updateImageContours();
-    }
+/** Vuelve a encajar todas las capas sobre la imagen visible. */
+function ajustarCapasAlTamano() {
     updateGridOverlay();
+
+    if (state.imageToSketch) updateImageContours();
+    if (state.capas.posterize) applyPosterization();
+    if (state.flowLines) drawFlowLines();
+}
+
+// Arrastrar el borde de la ventana dispara decenas de eventos por segundo. Antes
+// había dos manejadores registrados por separado y ninguno esperaba: cada uno
+// relanzaba el procesamiento entero. Ahora se atiende sólo cuando el usuario
+// suelta, y los píxeles ya están calculados de antes.
+let ajusteEnEspera = null;
+
+window.addEventListener('resize', () => {
+    clearTimeout(ajusteEnEspera);
+    ajusteEnEspera = setTimeout(ajustarCapasAlTamano, 120);
 });
 
 
 
 
-function updateImageContours() {
+/**
+ * Modo boceto: dos tintas superpuestas sobre los bordes que encuentra Sobel, una
+ * de construcción y otra de grafito. El cálculo vive en src/nucleo/imagen.js y se
+ * hace una sola vez por imagen y tema; redimensionar sólo vuelve a pintarlo.
+ */
+async function updateImageContours() {
     const img = elements.activeImage;
     const canvas = elements.contourCanvas;
     if (!canvas || !img) return;
-    
+
     const ctx = canvas.getContext('2d');
-    
-    // Si la imagen no está cargada o no hay modo boceto activo, limpiar y retornar
+
     if (!state.imageToSketch || !img.complete || img.naturalWidth === 0) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         return;
     }
-    
+
     const medidas = medidasDeImagen(img);
     if (!medidas) return;
 
-    const naturalWidth = img.naturalWidth;
-    const naturalHeight = img.naturalHeight;
-    const renderedWidth = medidas.ancho;
-    const renderedHeight = medidas.alto;
+    const pixeles = pixelesProcesados(800);
+    if (!pixeles) return;
 
-    // Posicionar y dimensionar el canvas exactamente sobre la imagen renderizada
-    canvas.width = renderedWidth;
-    canvas.height = renderedHeight;
-    canvas.style.left = medidas.x + 'px';
-    canvas.style.top = medidas.y + 'px';
-    canvas.style.width = renderedWidth + 'px';
-    canvas.style.height = renderedHeight + 'px';
-    
-    // Crear un canvas temporal para procesamiento a resolución balanceada (max 800px para fluidez instantánea)
-    const tempCanvas = document.createElement('canvas');
-    const tempCtx = tempCanvas.getContext('2d');
-    
-    const proceso = ZenSketch.tamanoDeProceso(naturalWidth, naturalHeight, 800);
-    const procWidth = proceso.ancho;
-    const procHeight = proceso.alto;
+    const tintas = tintasDeBoceto();
+    const tema = state.theme;
 
-    tempCanvas.width = procWidth;
-    tempCanvas.height = procHeight;
-    
-    try {
-        tempCtx.drawImage(img, 0, 0, procWidth, procHeight);
-    } catch (e) {
-        console.warn('Error al leer imagen de contornos (CORS/Carga):', e);
-        return;
+    // ¿Hay que rehacerlo? Sólo si es otra imagen o el tema cambió de tinta.
+    if (!pixeles.boceto || pixeles.boceto.tema !== tema) {
+        const generacion = state.generacion;
+        const capas = await capasDeBocetoDe(pixeles, tintas);
+
+        // Mientras se calculaba, el usuario pasó a otra imagen
+        if (generacion !== state.generacion || !capas) return;
+
+        pixeles.boceto = {
+            tema,
+            construccion: lienzoDesdeRgba(capas.base, pixeles.ancho, pixeles.alto),
+            grafito: lienzoDesdeRgba(capas.grafito, pixeles.ancho, pixeles.alto)
+        };
     }
-    
-    let imgData;
-    try {
-        imgData = tempCtx.getImageData(0, 0, procWidth, procHeight);
-    } catch (e) {
-        console.warn('Seguridad CORS bloqueó acceso a pixeles para contornos:', e);
-        return;
-    }
-    
-    const data = imgData.data;
-    
-    // 1. Convertir a escala de grises (luminancia)
-    const gray = new Uint8Array(procWidth * procHeight);
-    for (let i = 0; i < data.length; i += 4) {
-        const r = data[i];
-        const g = data[i+1];
-        const b = data[i+2];
-        gray[i/4] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-    }
-    
-    // 2. Operador Sobel para gradientes horizontales y verticales
-    const edges = new Float32Array(procWidth * procHeight);
-    let maxVal = 0;
-    
-    for (let y = 1; y < procHeight - 1; y++) {
-        for (let x = 1; x < procWidth - 1; x++) {
-            const idx = y * procWidth + x;
-            
-            // Kernel Sobel Horizontal
-            const gx = 
-                -1 * gray[(y-1)*procWidth + (x-1)] + 1 * gray[(y-1)*procWidth + (x+1)] +
-                -2 * gray[y*procWidth + (x-1)]     + 2 * gray[y*procWidth + (x+1)] +
-                -1 * gray[(y+1)*procWidth + (x-1)] + 1 * gray[(y+1)*procWidth + (x+1)];
-                
-            // Kernel Sobel Vertical
-            const gy = 
-                -1 * gray[(y-1)*procWidth + (x-1)] - 2 * gray[(y-1)*procWidth + x] - 1 * gray[(y-1)*procWidth + (x+1)] +
-                1 * gray[(y+1)*procWidth + (x-1)] + 2 * gray[(y+1)*procWidth + x] + 1 * gray[(y+1)*procWidth + (x+1)];
-                
-            const val = Math.hypot(gx, gy);
-            edges[idx] = val;
-            if (val > maxVal) maxVal = val;
-        }
-    }
-    
-    // 3. Renderizar boceto artístico de dos capas (Boceto de construcción + Grafito detallado)
-    const isLight = document.body.classList.contains('light-theme');
-    
-    // Colores para la tinta de grafito principal
-    const graphiteColor = isLight ? { r: 51, g: 65, b: 85 } : { r: 226, g: 232, b: 240 };
-    // Colores para la tinta del boceto de construcción base (azul para tema claro, rosa para tema oscuro)
-    const baseColor = isLight ? { r: 56, g: 189, b: 248 } : { r: 244, g: 114, b: 182 };
-    
-    // Umbral de borde
-    const threshold = 35;
-    
-    // Buffer para la capa de boceto base (azul/rosa suave, ligeramente desenfocado o expandido)
-    const baseOutCanvas = document.createElement('canvas');
-    baseOutCanvas.width = procWidth;
-    baseOutCanvas.height = procHeight;
-    const baseCtx = baseOutCanvas.getContext('2d');
-    const baseImgData = baseCtx.createImageData(procWidth, procHeight);
-    const baseData = baseImgData.data;
-    
-    // Buffer para la capa de grafito detallada
-    const graphOutCanvas = document.createElement('canvas');
-    graphOutCanvas.width = procWidth;
-    graphOutCanvas.height = procHeight;
-    const graphCtx = graphOutCanvas.getContext('2d');
-    const graphImgData = graphCtx.createImageData(procWidth, procHeight);
-    const graphData = graphImgData.data;
-    
-    for (let i = 0; i < edges.length; i++) {
-        const idx = i * 4;
-        const val = edges[i];
-        
-        if (val > threshold) {
-            // Intensidad proporcional al gradiente
-            const pct = val / (maxVal || 1);
-            
-            // Capa Base: Trazos de construcción suaves
-            baseData[idx] = baseColor.r;
-            baseData[idx+1] = baseColor.g;
-            baseData[idx+2] = baseColor.b;
-            baseData[idx+3] = Math.min(255, Math.round(pct * 140));
-            
-            // Capa Grafito: Contorno final limpio y oscuro
-            graphData[idx] = graphiteColor.r;
-            graphData[idx+1] = graphiteColor.g;
-            graphData[idx+2] = graphiteColor.b;
-            graphData[idx+3] = Math.min(255, Math.round(pct * 230));
-        } else {
-            baseData[idx+3] = 0;
-            graphData[idx+3] = 0;
-        }
-    }
-    
-    baseCtx.putImageData(baseImgData, 0, 0);
-    graphCtx.putImageData(graphImgData, 0, 0);
-    
-    ctx.clearRect(0, 0, renderedWidth, renderedHeight);
-    
-    // Dibujar capa 1 (Boceto de construcción) con un ligero escalado/desenfoque para simular volumen
+
+    // Puede haberse apagado mientras tanto
+    if (!state.imageToSketch) return;
+
+    colocarLienzo(canvas, medidas);
+    ctx.clearRect(0, 0, medidas.ancho, medidas.alto);
+
+    // La capa de construcción va un pixel más ancha por cada lado: al desbordar
+    // ligeramente el contorno de grafito, el trazo parece buscado a mano.
     ctx.globalAlpha = 0.55;
-    ctx.drawImage(baseOutCanvas, 0, 0, procWidth, procHeight, -1, -1, renderedWidth + 2, renderedHeight + 2);
-    
-    // Dibujar capa 2 (Grafito detallado) exactamente en su posición
-    ctx.globalAlpha = 1.0;
-    ctx.drawImage(graphOutCanvas, 0, 0, procWidth, procHeight, 0, 0, renderedWidth, renderedHeight);
+    ctx.drawImage(
+        pixeles.boceto.construccion, 0, 0, pixeles.ancho, pixeles.alto,
+        -1, -1, medidas.ancho + 2, medidas.alto + 2
+    );
+
+    ctx.globalAlpha = 1;
+    ctx.drawImage(
+        pixeles.boceto.grafito, 0, 0, pixeles.ancho, pixeles.alto,
+        0, 0, medidas.ancho, medidas.alto
+    );
+}
+
+const UMBRAL_DE_BORDE = 35;
+
+/** Encarga las capas del boceto al trabajador; si no lo hay, las calcula aquí. */
+async function capasDeBocetoDe(pixeles, tintas) {
+    if (calculadora.disponible()) {
+        try {
+            // Se envía una copia: el original se queda para la posterización, que
+            // trabaja sobre los mismos píxeles en color.
+            const copia = new Uint8ClampedArray(pixeles.rgba);
+            return await calculadora.encargar('boceto', {
+                rgba: copia,
+                ancho: pixeles.ancho,
+                alto: pixeles.alto,
+                umbral: UMBRAL_DE_BORDE,
+                construccion: tintas.construccion,
+                grafito: tintas.grafito
+            }, [copia.buffer]);
+        } catch (error) {
+            console.warn('El trabajador no pudo con el boceto; se calcula aquí:', error);
+        }
+    }
+
+    const { magnitud, maximo } = bordesDe(pixeles);
+    return ZenSketch.capasDeBoceto(
+        magnitud, maximo, UMBRAL_DE_BORDE, tintas.construccion, tintas.grafito
+    );
 }
 
 // Vinculación de toggle Imagen a Boceto (Sin fondo)
@@ -1028,47 +1455,6 @@ elements.imageToSketchToggle.addEventListener('change', (e) => {
 // === FASE 2: DESCOMPOSICIÓN AVANZADA DE IMÁGENES ===
 // =====================================================
 
-// --- UTILIDAD: Calcular dimensiones renderizadas de la imagen ---
-function getRenderedImageDimensions() {
-    const img = elements.activeImage;
-    const medidas = medidasDeImagen(img);
-    if (!medidas) return null;
-
-    return {
-        renderedWidth: medidas.ancho,
-        renderedHeight: medidas.alto,
-        offsetX: medidas.x,
-        offsetY: medidas.y,
-        naturalWidth: img.naturalWidth,
-        naturalHeight: img.naturalHeight,
-        scale: medidas.escala
-    };
-}
-
-// --- UTILIDAD: Obtener datos de imagen procesados a resolución manejable ---
-function getProcessedImageData(maxDimension = 600) {
-    const img = elements.activeImage;
-    if (!img || !img.complete || img.naturalWidth === 0) return null;
-    
-    const proceso = ZenSketch.tamanoDeProceso(img.naturalWidth, img.naturalHeight, maxDimension);
-    const procWidth = proceso.ancho;
-    const procHeight = proceso.alto;
-
-    const tempCanvas = document.createElement('canvas');
-    const tempCtx = tempCanvas.getContext('2d');
-    tempCanvas.width = procWidth;
-    tempCanvas.height = procHeight;
-    
-    try {
-        tempCtx.drawImage(img, 0, 0, procWidth, procHeight);
-        const imgData = tempCtx.getImageData(0, 0, procWidth, procHeight);
-        return { data: imgData.data, width: procWidth, height: procHeight, canvas: tempCanvas, ctx: tempCtx };
-    } catch (e) {
-        console.warn('Error al procesar imagen (CORS):', e);
-        return null;
-    }
-}
-
 // --- 2.1: POSTERIZACIÓN INTELIGENTE ---
 /** Borra el lienzo de posterización y lo aparta. */
 function limpiarPosterizacion() {
@@ -1082,50 +1468,27 @@ function limpiarPosterizacion() {
 function applyPosterization() {
     const canvas = elements.posterizeCanvas;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
 
     if (!state.capas.posterize) {
         limpiarPosterizacion();
         return;
     }
 
-    const dims = getRenderedImageDimensions();
-    if (!dims) return;
-    
-    const processed = getProcessedImageData(800);
-    if (!processed) return;
-    
-    // Posicionar el canvas
-    canvas.width = dims.renderedWidth;
-    canvas.height = dims.renderedHeight;
-    canvas.style.left = dims.offsetX + 'px';
-    canvas.style.top = dims.offsetY + 'px';
-    canvas.style.width = dims.renderedWidth + 'px';
-    canvas.style.height = dims.renderedHeight + 'px';
+    const medidas = medidasDeImagen(elements.activeImage);
+    if (!medidas) return;
+
+    const pixeles = pixelesProcesados(800);
+    if (!pixeles) return;
+
+    colocarLienzo(canvas, medidas);
     canvas.style.display = 'block';
-    
-    const levels = state.posterizeLevel;
-    const data = processed.data;
-    const outCanvas = document.createElement('canvas');
-    outCanvas.width = processed.width;
-    outCanvas.height = processed.height;
-    const outCtx = outCanvas.getContext('2d');
-    const outData = outCtx.createImageData(processed.width, processed.height);
-    const out = outData.data;
-    
-    const step = 255 / (levels - 1);
-    
-    for (let i = 0; i < data.length; i += 4) {
-        // Posterizar cada canal
-        out[i]     = Math.round(Math.round(data[i] / step) * step);
-        out[i + 1] = Math.round(Math.round(data[i + 1] / step) * step);
-        out[i + 2] = Math.round(Math.round(data[i + 2] / step) * step);
-        out[i + 3] = 255;
-    }
-    
-    outCtx.putImageData(outData, 0, 0);
-    ctx.clearRect(0, 0, dims.renderedWidth, dims.renderedHeight);
-    ctx.drawImage(outCanvas, 0, 0, processed.width, processed.height, 0, 0, dims.renderedWidth, dims.renderedHeight);
+
+    const plano = ZenSketch.posterizar(pixeles.rgba, state.posterizeLevel);
+    const lienzo = lienzoDesdeRgba(plano, pixeles.ancho, pixeles.alto);
+
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, medidas.ancho, medidas.alto);
+    ctx.drawImage(lienzo, 0, 0, pixeles.ancho, pixeles.alto, 0, 0, medidas.ancho, medidas.alto);
 }
 
 elements.posterizeLevel.addEventListener('input', (e) => {
@@ -1134,6 +1497,7 @@ elements.posterizeLevel.addEventListener('input', (e) => {
     if (state.capas.posterize) {
         applyPosterization();
     }
+    guardarPreferencias();
 });
 
 // --- 2.2: REVELADO PROGRESIVO ---
@@ -1146,106 +1510,86 @@ elements.revealStepBtns.forEach(boton => {
 });
 
 // --- 2.3: LÍNEAS DE FLUJO (Flow Lines) ---
-function drawFlowLines() {
+/**
+ * Líneas de flujo: trazos que siguen la tangente al borde, que es la dirección en
+ * la que «corre» la forma. Las polilíneas no dependen del tema, así que se calculan
+ * una vez por imagen; el color se pone al pintar.
+ */
+async function drawFlowLines() {
     const canvas = elements.flowCanvas;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    
+
     if (!state.flowLines) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         canvas.classList.remove('active');
         return;
     }
-    
-    const dims = getRenderedImageDimensions();
-    if (!dims) return;
-    
-    const processed = getProcessedImageData(400);
-    if (!processed) return;
-    
-    // Posicionar el canvas
-    canvas.width = dims.renderedWidth;
-    canvas.height = dims.renderedHeight;
-    canvas.style.left = dims.offsetX + 'px';
-    canvas.style.top = dims.offsetY + 'px';
-    canvas.style.width = dims.renderedWidth + 'px';
-    canvas.style.height = dims.renderedHeight + 'px';
+
+    const medidas = medidasDeImagen(elements.activeImage);
+    if (!medidas) return;
+
+    const pixeles = pixelesProcesados(400);
+    if (!pixeles) return;
+
+    if (!pixeles.trazos) {
+        const generacion = state.generacion;
+        const trazos = await trazosDeFlujoDe(pixeles);
+
+        if (generacion !== state.generacion || !trazos) return;
+        pixeles.trazos = trazos;
+    }
+
+    if (!state.flowLines) return;
+
+    colocarLienzo(canvas, medidas);
     canvas.classList.add('active');
-    
-    const { data, width, height } = processed;
-    
-    // Convertir a escala de grises
-    const gray = new Uint8Array(width * height);
-    for (let i = 0; i < data.length; i += 4) {
-        gray[i / 4] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+
+    const escalaX = medidas.ancho / pixeles.ancho;
+    const escalaY = medidas.alto / pixeles.alto;
+    const claro = document.body.classList.contains('light-theme');
+
+    ctx.clearRect(0, 0, medidas.ancho, medidas.alto);
+    ctx.lineCap = 'round';
+
+    for (const trazo of pixeles.trazos) {
+        const opacidad = 0.15 + trazo.intensidad * 0.5;
+
+        ctx.beginPath();
+        ctx.strokeStyle = claro
+            ? `rgba(99, 102, 241, ${opacidad})`
+            : `rgba(168, 85, 247, ${opacidad})`;
+        ctx.lineWidth = 1.5 + trazo.intensidad * 1.5;
+
+        const [primeroX, primeroY] = trazo.puntos[0];
+        ctx.moveTo(primeroX * escalaX, primeroY * escalaY);
+
+        for (let i = 1; i < trazo.puntos.length; i++) {
+            ctx.lineTo(trazo.puntos[i][0] * escalaX, trazo.puntos[i][1] * escalaY);
+        }
+
+        ctx.stroke();
     }
-    
-    // Calcular gradientes con Sobel
-    const gradX = new Float32Array(width * height);
-    const gradY = new Float32Array(width * height);
-    
-    for (let y = 1; y < height - 1; y++) {
-        for (let x = 1; x < width - 1; x++) {
-            const idx = y * width + x;
-            gradX[idx] = -gray[(y-1)*width+(x-1)] + gray[(y-1)*width+(x+1)]
-                        - 2*gray[y*width+(x-1)] + 2*gray[y*width+(x+1)]
-                        - gray[(y+1)*width+(x-1)] + gray[(y+1)*width+(x+1)];
-            gradY[idx] = -gray[(y-1)*width+(x-1)] - 2*gray[(y-1)*width+x] - gray[(y-1)*width+(x+1)]
-                        + gray[(y+1)*width+(x-1)] + 2*gray[(y+1)*width+x] + gray[(y+1)*width+(x+1)];
+}
+
+/** Encarga las polilíneas al trabajador; si no lo hay, las calcula aquí. */
+async function trazosDeFlujoDe(pixeles) {
+    if (calculadora.disponible()) {
+        try {
+            const copia = new Uint8ClampedArray(pixeles.rgba);
+            const salida = await calculadora.encargar('flujo', {
+                rgba: copia,
+                ancho: pixeles.ancho,
+                alto: pixeles.alto
+            }, [copia.buffer]);
+            return salida.trazos;
+        } catch (error) {
+            console.warn('El trabajador no pudo con las líneas de flujo; se calculan aquí:', error);
         }
     }
-    
-    // Dibujar líneas de flujo siguiendo la dirección perpendicular al gradiente
-    ctx.clearRect(0, 0, dims.renderedWidth, dims.renderedHeight);
-    
-    const isLight = document.body.classList.contains('light-theme');
-    const scaleX = dims.renderedWidth / width;
-    const scaleY = dims.renderedHeight / height;
-    
-    // Muestreo espacial para las líneas
-    const gridStep = 12;
-    const lineLength = 30;
-    const steps = 15;
-    
-    for (let gy = gridStep; gy < height - gridStep; gy += gridStep) {
-        for (let gx = gridStep; gx < width - gridStep; gx += gridStep) {
-            const idx = gy * width + gx;
-            const mag = Math.hypot(gradX[idx], gradY[idx]);
-            
-            if (mag < 15) continue; // Ignorar zonas planas
-            
-            // Intensidad del trazo basada en la magnitud del gradiente
-            const intensity = Math.min(1, mag / 200);
-            
-            ctx.beginPath();
-            ctx.strokeStyle = isLight 
-                ? `rgba(99, 102, 241, ${0.15 + intensity * 0.5})`
-                : `rgba(168, 85, 247, ${0.15 + intensity * 0.5})`;
-            ctx.lineWidth = 1.5 + intensity * 1.5;
-            ctx.lineCap = 'round';
-            
-            // Trazar una línea corta siguiendo el flujo
-            let cx = gx, cy = gy;
-            ctx.moveTo(cx * scaleX, cy * scaleY);
-            
-            for (let s = 0; s < steps; s++) {
-                // Recalcular dirección en cada paso
-                const ix = Math.round(cx);
-                const iy = Math.round(cy);
-                if (ix < 1 || ix >= width - 1 || iy < 1 || iy >= height - 1) break;
-                
-                const pi = iy * width + ix;
-                const localAngle = Math.atan2(gradY[pi], gradX[pi]) + Math.PI / 2;
-                
-                cx += Math.cos(localAngle) * (lineLength / steps);
-                cy += Math.sin(localAngle) * (lineLength / steps);
-                
-                ctx.lineTo(cx * scaleX, cy * scaleY);
-            }
-            
-            ctx.stroke();
-        }
-    }
+
+    const { gx, gy } = bordesDe(pixeles);
+    return ZenSketch.trazosDeFlujo(gx, gy, pixeles.ancho, pixeles.alto);
 }
 
 elements.flowLinesToggle.addEventListener('change', (e) => {
@@ -1263,14 +1607,7 @@ elements.flowLinesToggle.addEventListener('change', (e) => {
 // El ajuste al cambiar de imagen lo hace ya el manejador de 'load' de más
 // arriba, que era el segundo registrado sobre el mismo elemento (defecto D-09).
 
-window.addEventListener('resize', () => {
-    if (state.capas.posterize) {
-        applyPosterization();
-    }
-    if (state.flowLines) {
-        drawFlowLines();
-    }
-});
+// El segundo manejador de resize desapareció: lo cubre ajustarCapasAlTamano().
 
 
 // =====================================================
@@ -1318,6 +1655,189 @@ if (elements.fullscreenBtn) {
 // Los atajos de pantalla completa, Escape y 1-4 están en el único manejador de
 // teclado de más arriba.
 
+// --- ZOOM Y DESPLAZAMIENTO SOBRE LA IMAGEN ---
+// Estudiar un detalle sin salir de la sesión. La rueda amplía, arrastrar mueve y
+// un doble clic devuelve la imagen a su sitio.
+
+const ZOOM_MINIMO = 1;
+const ZOOM_MAXIMO = 6;
+
+let avisoZoomEnEspera = null;
+
+function fijarZoom(nuevoZoom, mostrarAviso = true) {
+    state.zoom = Math.min(ZOOM_MAXIMO, Math.max(ZOOM_MINIMO, nuevoZoom));
+
+    // Al volver al 100 % la imagen se recentra sola: dejarla desplazada y sin
+    // ampliar sólo consigue que parezca que se ha perdido.
+    if (state.zoom === ZOOM_MINIMO) {
+        state.desplazamientoX = 0;
+        state.desplazamientoY = 0;
+    }
+
+    elements.imageWrapper.classList.toggle('ampliada', state.zoom > ZOOM_MINIMO);
+    applyImageTransforms();
+
+    if (mostrarAviso) anunciarZoom();
+}
+
+function anunciarZoom() {
+    if (!elements.avisoZoom) return;
+
+    elements.avisoZoom.textContent = `${Math.round(state.zoom * 100)} %`;
+    elements.avisoZoom.classList.add('visible');
+
+    clearTimeout(avisoZoomEnEspera);
+    avisoZoomEnEspera = setTimeout(() => {
+        elements.avisoZoom.classList.remove('visible');
+    }, 900);
+}
+
+function reiniciarZoom() {
+    state.desplazamientoX = 0;
+    state.desplazamientoY = 0;
+    fijarZoom(ZOOM_MINIMO);
+}
+
+if (elements.imageWrapper) {
+    elements.imageWrapper.addEventListener('wheel', (e) => {
+        if (!state.lista) return;
+        e.preventDefault();
+
+        // Un paso proporcional: ampliar se siente igual de rápido a cualquier nivel
+        const paso = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+        fijarZoom(state.zoom * paso);
+    }, { passive: false });
+
+    elements.imageWrapper.addEventListener('dblclick', () => {
+        if (!state.lista) return;
+        reiniciarZoom();
+    });
+
+    let arrastre = null;
+
+    elements.imageWrapper.addEventListener('pointerdown', (e) => {
+        if (state.zoom <= ZOOM_MINIMO || !state.lista) return;
+
+        arrastre = {
+            puntero: e.pointerId,
+            x: e.clientX - state.desplazamientoX,
+            y: e.clientY - state.desplazamientoY
+        };
+
+        elements.imageWrapper.setPointerCapture(e.pointerId);
+        elements.imageWrapper.classList.add('arrastrando');
+    });
+
+    elements.imageWrapper.addEventListener('pointermove', (e) => {
+        if (!arrastre || e.pointerId !== arrastre.puntero) return;
+
+        state.desplazamientoX = e.clientX - arrastre.x;
+        state.desplazamientoY = e.clientY - arrastre.y;
+        applyImageTransforms();
+    });
+
+    const soltarArrastre = (e) => {
+        if (!arrastre || e.pointerId !== arrastre.puntero) return;
+
+        arrastre = null;
+        elements.imageWrapper.classList.remove('arrastrando');
+    };
+
+    elements.imageWrapper.addEventListener('pointerup', soltarArrastre);
+    elements.imageWrapper.addEventListener('pointercancel', soltarArrastre);
+}
+
+// --- DRAG & DROP ---
+
+/**
+ * Saca los archivos de lo que se ha soltado. Soltar una carpeta es lo primero que
+ * la gente intenta, y `dataTransfer.files` la deja fuera: hay que recorrer el árbol
+ * de entradas. Si el navegador no ofrece esa API, se cae a la lista plana.
+ *
+ * @returns {Promise<File[]>}
+ */
+async function archivosSoltados(dataTransfer) {
+    const entradas = [];
+
+    if (dataTransfer.items && dataTransfer.items[0] && dataTransfer.items[0].webkitGetAsEntry) {
+        for (const elemento of dataTransfer.items) {
+            const entrada = elemento.webkitGetAsEntry();
+            if (entrada) entradas.push(entrada);
+        }
+    }
+
+    if (entradas.length === 0) {
+        return Array.from(dataTransfer.files || []);
+    }
+
+    // Topes compartidos por todo el recorrido. Sin ellos, un árbol enorme —o un
+    // lector que nunca dice que ha terminado— deja la aplicación colgada sin que
+    // se vea nada en pantalla.
+    const recorrido = { archivos: [], tandas: 0 };
+
+    await Promise.all(entradas.map((entrada) => recorrerEntrada(entrada, recorrido)));
+
+    if (recorrido.archivos.length >= LIMITE_DE_ARCHIVOS) {
+        showToast(
+            `Se cargaron las primeras ${LIMITE_DE_ARCHIVOS} imágenes de la carpeta.`,
+            'warning', 5000
+        );
+    }
+
+    return recorrido.archivos;
+}
+
+// Una sesión de práctica no necesita más, y el tope es lo que garantiza que
+// soltar una carpeta siempre termine.
+const LIMITE_DE_ARCHIVOS = 5000;
+const LIMITE_DE_TANDAS = 2000;
+const PROFUNDIDAD_MAXIMA = 8;
+
+/** Recorre una entrada soltada; si es carpeta, baja por ella. */
+function recorrerEntrada(entrada, recorrido, profundidad = 0) {
+    if (profundidad > PROFUNDIDAD_MAXIMA) return Promise.resolve();
+    if (recorrido.archivos.length >= LIMITE_DE_ARCHIVOS) return Promise.resolve();
+    if (recorrido.tandas >= LIMITE_DE_TANDAS) return Promise.resolve();
+
+    if (entrada.isFile) {
+        return new Promise((resolver) => {
+            entrada.file(
+                (archivo) => { recorrido.archivos.push(archivo); resolver(); },
+                () => resolver()
+            );
+        });
+    }
+
+    if (!entrada.isDirectory) return Promise.resolve();
+
+    const lector = entrada.createReader();
+
+    // readEntries devuelve tandas: hay que seguir pidiendo hasta que venga vacía.
+    // El contador de tandas es la red de seguridad para cuando eso no llega.
+    return new Promise((resolver) => {
+        const siguienteTanda = () => {
+            if (recorrido.tandas >= LIMITE_DE_TANDAS ||
+                recorrido.archivos.length >= LIMITE_DE_ARCHIVOS) {
+                resolver();
+                return;
+            }
+
+            recorrido.tandas++;
+
+            lector.readEntries(async (tanda) => {
+                if (tanda.length === 0) { resolver(); return; }
+
+                await Promise.all(
+                    tanda.map((hija) => recorrerEntrada(hija, recorrido, profundidad + 1))
+                );
+                siguienteTanda();
+            }, () => resolver());
+        };
+
+        siguienteTanda();
+    });
+}
+
 // --- DRAG & DROP ---
 const zonaSoltado = document.querySelector('.viewport');
 if (zonaSoltado) {
@@ -1332,15 +1852,16 @@ if (zonaSoltado) {
         zonaSoltado.style.outlineOffset = '';
     });
     
-    zonaSoltado.addEventListener('drop', (e) => {
+    zonaSoltado.addEventListener('drop', async (e) => {
         e.preventDefault();
         zonaSoltado.style.outline = '';
         zonaSoltado.style.outlineOffset = '';
-        
-        const files = e.dataTransfer.files;
-        if (files && files.length > 0) {
-            initSession(files);
-            showToast(`${files.length} archivo(s) cargado(s)`, 'success');
+
+        const archivos = await archivosSoltados(e.dataTransfer);
+
+        if (archivos.length > 0) {
+            initSession(archivos);
+            showToast(`${archivos.length} archivo(s) cargado(s)`, 'success');
         }
     });
 }

@@ -6,7 +6,7 @@
   "scripts": {
     "probar": "vitest run",
     "probar:ver": "vitest",
-    "lint": "eslint src pruebas app.js",
+    "lint": "eslint src pruebas app.js servicio.js",
     "verificar": "npm run lint && npm run probar"
   },
   "devDependencies": {

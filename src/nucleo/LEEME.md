@@ -40,6 +40,8 @@ Si añades un módulo nuevo, copia ese envoltorio y añade su `<script>` a
 | `imagenes.js` | Qué archivos valen como referencia y cuáles hay que convertir |
 | `geometria.js` | Rectángulo real de la imagen con `object-fit: contain`, y resolución de proceso de los filtros |
 | `capas.js` | Qué capa visual manda cuando varias compiten por la misma imagen |
+| `imagen.js` | Luminancia, Sobel, posterización y trazado de las líneas de flujo |
+| `trabajador-imagen.js` | El Web Worker que ejecuta `imagen.js` fuera del hilo de la interfaz |
 
 ## Reglas de la casa
 
@@ -62,6 +64,19 @@ está a la vista.
 **La tanda nueva mira al final de la anterior.** `abrirTandaNueva()` lee
 `tanda[tanda.length - 1]`, no la posición actual, que en ese punto ya se salió del
 rango. Leerla de ahí era lo que dejaba la guarda contra repeticiones sin efecto.
+
+**El cálculo pesado se encarga, no se hace.** `updateImageContours()` y
+`drawFlowLines()` piden el resultado a `calculadora`, que lo manda al trabajador
+cuando puede. **El trabajador no siempre está**: abriendo `index.html` con doble
+clic el navegador no deja crearlo, así que hay un camino síncrono equivalente. Los
+dos dan el mismo resultado —comprobado byte a byte sobre 426.400 píxeles— y esa
+equivalencia es justo lo que no hay que romper: si tocas `imagen.js`, lo tocas para
+los dos, porque el trabajador carga ese mismo archivo con `importScripts`.
+
+**Los píxeles se leen una vez por imagen.** `pixelesProcesados()` guarda el RGBA
+reducido, la luminancia, el Sobel y hasta las capas ya pintadas. Redimensionar la
+ventana no recalcula nada: sólo vuelve a dibujar lo guardado. Si añades un filtro,
+cuélgalo de esa caché en vez de volver a leer del lienzo.
 
 **Las capas se resuelven antes de dibujar.** Ningún manejador escribe sobre
 `style.filter` por su cuenta: `capas.resolver()` decide qué queda encendido y

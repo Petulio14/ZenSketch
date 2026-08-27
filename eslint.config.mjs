@@ -50,6 +50,25 @@ export default [
         }
     },
 
+    // --- El trabajador corre fuera del documento: su global es self. ---
+    {
+        files: ['src/nucleo/trabajador-imagen.js', 'servicio.js'],
+        languageOptions: {
+            ecmaVersion: 2022,
+            sourceType: 'script',
+            globals: { ...globals.worker }
+        },
+        rules: {
+            ...js.configs.recommended.rules,
+            'no-unused-vars': 'error',
+            'no-var': 'error',
+            'prefer-const': 'error',
+            eqeqeq: ['error', 'always'],
+            // El ámbito de un trabajador ya es suyo: aquí nada se escapa a la página
+            'no-implicit-globals': 'off'
+        }
+    },
+
     // --- Pruebas: módulos ES sobre Node. ---
     {
         files: ['pruebas/**/*.js'],

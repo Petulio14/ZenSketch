@@ -1510,3 +1510,119 @@ body.light-theme .toast {
     animation: fadeIn 0.3s ease;
 }
 
+/* --- RUTINA DE SESIÓN --- */
+.rutina-estado {
+    margin: 8px 0 12px;
+    padding: 10px 12px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+}
+
+.rutina-linea {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+
+.rutina-linea #rutina-pose {
+    font-variant-numeric: tabular-nums;
+    color: var(--primary-glow);
+    font-weight: 600;
+}
+
+.rutina-barra-fondo {
+    height: 4px;
+    background: var(--input-bg);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.rutina-barra {
+    width: 0;
+    height: 100%;
+    background: linear-gradient(to right, var(--primary), var(--accent));
+    border-radius: 2px;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* --- PRÁCTICA ACUMULADA --- */
+.practica-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+}
+
+.practica-dato {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 10px 4px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+}
+
+.practica-valor {
+    font-size: 1.3rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text-main);
+    font-variant-numeric: tabular-nums;
+}
+
+/* La racha es lo que se mira primero: se le da el color de acento */
+#practica-racha {
+    color: var(--primary-glow);
+}
+
+.practica-etiqueta {
+    font-size: 0.62rem;
+    color: var(--text-dimmed);
+    text-align: center;
+    line-height: 1.25;
+}
+
+.practica-pie {
+    margin-top: 8px;
+    font-size: 0.68rem;
+    color: var(--text-dimmed);
+    text-align: center;
+}
+
+/* --- ZOOM SOBRE LA IMAGEN --- */
+.image-wrapper.ampliada {
+    cursor: grab;
+}
+
+.image-wrapper.arrastrando {
+    cursor: grabbing;
+}
+
+.aviso-zoom {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 5px 12px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-main);
+    font-variant-numeric: tabular-nums;
+    backdrop-filter: blur(8px);
+    opacity: 0;
+    transition: opacity 0.25s ease;
+    pointer-events: none;
+    z-index: 5;
+}
+
+.aviso-zoom.visible {
+    opacity: 1;
+}

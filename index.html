@@ -16,9 +16,10 @@
          El esquema file: está para que abrir index.html con doble clic siga
          funcionando: en ese caso 'self' no siempre casa, según el navegador.
          No es una puerta a la red; de eso sigue ocupándose connect-src. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file: 'unsafe-eval'; style-src 'self' file:; font-src 'self' file:; img-src 'self' file: blob: data:; connect-src 'self' blob:; worker-src 'self' blob:; base-uri 'none'; form-action 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file: 'unsafe-eval'; style-src 'self' file:; font-src 'self' file:; img-src 'self' file: blob: data:; connect-src 'self' blob:; worker-src 'self' file: blob:; base-uri 'none'; form-action 'none'">
     <title>ZenSketch - Práctica de Dibujo Inteligente</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
+    <link rel="manifest" href="manifest.webmanifest">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -90,6 +91,28 @@
                 </div>
             </div>
 
+            <!-- Práctica acumulada: lo que hace que uno vuelva mañana -->
+            <div class="control-section practica-section" id="practica-panel">
+                <div class="section-title" data-section="practica">Tu práctica</div>
+                <div class="section-content">
+                    <div class="practica-grid">
+                        <div class="practica-dato">
+                            <span class="practica-valor" id="practica-racha">0</span>
+                            <span class="practica-etiqueta">días seguidos</span>
+                        </div>
+                        <div class="practica-dato">
+                            <span class="practica-valor" id="practica-hoy">0</span>
+                            <span class="practica-etiqueta">min hoy</span>
+                        </div>
+                        <div class="practica-dato">
+                            <span class="practica-valor" id="practica-total">0</span>
+                            <span class="practica-etiqueta">min en total</span>
+                        </div>
+                    </div>
+                    <div class="practica-pie" id="practica-pie">Aún no has dibujado nada aquí</div>
+                </div>
+            </div>
+
             <!-- Temporizador -->
             <div class="control-section timer-section">
                 <div class="section-title" data-section="timer">Temporizador</div>
@@ -113,6 +136,26 @@
                     </div>
 
                     <!-- Personalizar temporizador -->
+                    <!-- Rutina de sesión: bloques encadenados de más corto a más largo -->
+                    <div class="option-row rutina-row">
+                        <label class="option-label" for="rutina-select">
+                            <svg class="small-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M7 12h14"/><path d="M11 18h10"/></svg>
+                            <span>Rutina</span>
+                        </label>
+                        <select id="rutina-select" class="select-input">
+                            <option value="">Libre</option>
+                        </select>
+                    </div>
+                    <div class="rutina-estado hidden" id="rutina-estado">
+                        <div class="rutina-linea">
+                            <span id="rutina-bloque">Bloque 1 de 3</span>
+                            <span id="rutina-pose">1 / 17</span>
+                        </div>
+                        <div class="rutina-barra-fondo">
+                            <div class="rutina-barra" id="rutina-barra"></div>
+                        </div>
+                    </div>
+
                     <div class="custom-timer">
                         <div class="input-group">
                             <input type="number" id="custom-min" min="0" max="99" value="1" placeholder="Min">
@@ -357,6 +400,8 @@
                     <canvas id="flow-canvas" class="flow-canvas"></canvas>
                     <canvas id="posterize-canvas" class="contour-canvas"></canvas>
                     
+                    <div class="aviso-zoom" id="aviso-zoom">100 %</div>
+
                     <!-- Capas de Cuadrícula -->
                     <div class="grid-overlay hidden" id="grid-overlay">
                         <!-- Generado dinámicamente por CSS/JS -->
@@ -374,6 +419,10 @@
     <script src="src/nucleo/imagenes.js"></script>
     <script src="src/nucleo/geometria.js"></script>
     <script src="src/nucleo/capas.js"></script>
+    <script src="src/nucleo/imagen.js"></script>
+    <script src="src/nucleo/preferencias.js"></script>
+    <script src="src/nucleo/historial.js"></script>
+    <script src="src/nucleo/rutinas.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
